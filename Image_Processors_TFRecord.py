@@ -3,7 +3,7 @@ __author__ = 'Brian M Anderson'
 import SimpleITK as sitk
 import numpy as np
 from _collections import OrderedDict
-from .Plot_And_Scroll_Images.Plot_Scroll_Images import plot_scroll_Image
+from .Plot_And_Scroll_Images.Plot_Scroll_Images import plot_scroll_Image, plt
 
 
 def get_start_stop(annotation, extension=np.inf):
@@ -112,4 +112,37 @@ class Distribute_into_2D(Image_Processor):
         return out_features
 
 
-class Normalize_Liver(Image_Processor):
+class Normalize_to_annotation(Image_Processor):
+    def __init__(self, annotation_value=None):
+        '''
+        :param annotation_value: mask value to normalize over
+        '''
+        assert annotation_value is not None, 'Need to provide a value'
+        self.annotation_value = annotation_value
+
+    def parse(self, input_features):
+        images = input_features['image']
+        annotation = input_features['annotation']
+        data = images[annotation==self.annotation_value].flatten()
+        counts, bins = np.histogram(data, bins=100)
+        bins = bins[:-1]
+        count_index = np.where(counts == np.max(counts))[0][-1]
+        peak = bins[count_index]
+        data_reduced = data[np.where((data > peak - 150) & (data < peak + 150))]
+        counts, bins = np.histogram(data_reduced, bins=1000)
+        bins = bins[:-1]
+        count_index = np.where(counts == np.max(counts))[0][-1]
+        half_counts = counts - np.max(counts) // 2
+        half_upper = np.abs(half_counts[count_index + 1:])
+        max_50 = np.where(half_upper == np.min(half_upper))[0][0]
+
+        half_lower = np.abs(half_counts[:count_index - 1][-1::-1])
+        min_50 = np.where(half_lower == np.min(half_lower))[0][0]
+
+        min_values = bins[count_index - min_50]
+        max_values = bins[count_index + max_50]
+        data = data[np.where((data >= min_values) & (data <= max_values))]
+        mean_val, std_val = np.mean(data), np.std(data)
+        images = (images - mean_val) / std_val
+        input_features['image'] = images
+        return input_features
