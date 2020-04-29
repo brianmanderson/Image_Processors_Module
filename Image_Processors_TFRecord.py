@@ -146,3 +146,35 @@ class Normalize_to_annotation(Image_Processor):
         images = (images - mean_val) / std_val
         input_features['image'] = images
         return input_features
+
+
+class Add_Bounding_Box_Indexes(Image_Processor):
+    def __init__(self, wanted_vals_for_bbox=None):
+        '''
+        :param wanted_vals_for_bbox: a list of values in integer form for bboxes
+        '''
+        assert type(wanted_vals_for_bbox) is list, 'Provide a list for bboxes'
+        self.wanted_vals_for_bbox=wanted_vals_for_bbox
+
+    def parse(self, input_features):
+        annotation = input_features['annotation']
+        for val in self.wanted_vals_for_bbox:
+            slices = np.where(annotation == val)
+            if slices:
+                bounding_boxes, volumes = get_bounding_boxes(sitk.GetImageFromArray(annotation), val)
+                bounding_boxes = bounding_boxes[0]
+                volumes = volumes[0]
+                c_start, r_start, z_start, c_stop, r_stop, z_stop = bounding_boxes
+                z_stop, r_stop, c_stop = z_start + z_stop, r_start + r_stop, c_start + c_stop
+            input_features['bounding_boxes_z_start_{}'.format(val)] = z_start
+            input_features['bounding_boxes_r_start_{}'.format(val)] = r_start
+            input_features['bounding_boxes_c_start_{}'.format(val)] = c_start
+            input_features['bounding_boxes_z_stop_{}'.format(val)] = z_stop
+            input_features['bounding_boxes_r_stop_{}'.format(val)] = r_stop
+            input_features['bounding_boxes_c_stop_{}'.format(val)] = c_stop
+            input_features['volumes_{}'.format(val)] = volumes
+        return input_features
+
+
+if __name__ == '__main__':
+    pass
