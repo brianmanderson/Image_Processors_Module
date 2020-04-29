@@ -1,0 +1,9 @@
+[submodule "Plot_And_Scroll_Images"]
+	path = Plot_And_Scroll_Images
+	url = https://github.com/brianmanderson/Plot_And_Scroll_Images.git
+[submodule "Fill_Missing_Segments"]
+	path = Fill_Missing_Segments
+	url = https://github.com/brianmanderson/Fill_Missing_Segments.git
+[submodule "Resample_Class"]
+	path = Resample_Class
+	url = https://github.com/brianmanderson/Resample_Class.git
