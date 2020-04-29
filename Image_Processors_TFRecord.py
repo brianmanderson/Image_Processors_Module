@@ -148,6 +148,65 @@ class Normalize_to_annotation(Image_Processor):
         return input_features
 
 
+class Box_Images(Image_Processor):
+    def __init__(self, wanted_vals_for_bbox=None,
+                 bounding_box_expansion=(10,10,10), power_val_z=1, power_val_r=1,
+                 power_val_c=1, min_images=None, min_rows=None, min_cols=None):
+        '''
+        :param wanted_vals_for_bbox: a list of values in integer form for bboxes
+        :param box_imaages_and_annotations: True/False box up the images now?
+        '''
+        assert type(wanted_vals_for_bbox) is list, 'Provide a list for bboxes'
+        self.wanted_vals_for_bbox=wanted_vals_for_bbox
+        self.bounding_box_expansion = bounding_box_expansion
+        self.power_val_z, self.power_val_r, self.power_val_c = power_val_z, power_val_r, power_val_c
+        self.min_images, self.min_rows, self.min_cols = min_images, min_rows, min_cols
+    def parse(self, input_features):
+        annotation = input_features['annotation']
+        image = input_features['image']
+        for val in self.wanted_vals_for_bbox:
+            if 'bonding_boxes_z_start_{}'.format(val) not in input_features:
+                add_indexes = Add_Bounding_Box_Indexes(self.wanted_vals_for_bbox)
+                add_indexes.parse(input_features)
+            z_start = input_features['bounding_boxes_z_start_{}'.format(val)]
+            r_start = input_features['bounding_boxes_r_start_{}'.format(val)]
+            c_start = input_features['bounding_boxes_c_start_{}'.format(val)]
+            z_stop = input_features['bounding_boxes_z_stop_{}'.format(val)]
+            r_stop = input_features['bounding_boxes_r_stop_{}'.format(val)]
+            c_stop = input_features['bounding_boxes_c_stop_{}'.format(val)]
+
+            z_start = max([0, z_start - self.bounding_box_expansion[0]])
+            z_stop = min([z_stop + self.bounding_box_expansion[0], annotation.shape[0]])
+            r_start = max([0, r_start - self.bounding_box_expansion[1]])
+            r_stop = min([annotation.shape[1], r_stop + self.bounding_box_expansion[1]])
+            c_start = max([0, c_start - self.bounding_box_expansion[2]])
+            c_stop = min([annotation.shape[2], c_stop + self.bounding_box_expansion[2]])
+
+            z_total, r_total, c_total = z_stop - z_start, r_stop - r_start, c_stop - c_start
+            remainder_z, remainder_r, remainder_c = self.power_val_z - z_total % self.power_val_z if z_total % self.power_val_z != 0 else 0, \
+                                                    self.power_val_r - r_total % self.power_val_r if r_total % self.power_val_r != 0 else 0, \
+                                                    self.power_val_c - c_total % self.power_val_c if c_total % self.power_val_c != 0 else 0
+            min_images, min_rows, min_cols = z_total + remainder_z, r_total + remainder_r, c_total + remainder_c
+            if self.min_images is not None:
+                min_images = max([min_images, self.min_images])
+            if self.min_rows is not None:
+                min_rows = max([min_rows, self.min_rows])
+            if self.min_cols is not None:
+                min_cols = max([min_cols, self.min_cols])
+            out_images = np.ones([min_images, min_rows, min_cols]) * np.min(image)
+            out_annotations = np.zeros([min_images, min_rows, min_cols])
+            out_annotations[..., 0] = 1
+            image_cube = image[z_start:z_start + min_images, r_start:r_start + min_rows, c_start:c_start + min_cols]
+            annotation_cube = annotation[z_start:z_start + min_images, r_start:r_start + min_rows,
+                              c_start:c_start + min_cols]
+            img_shape = image_cube.shape
+            out_images[:img_shape[0], :img_shape[1], :img_shape[2], ...] = image_cube
+            out_annotations[:img_shape[0], :img_shape[1], :img_shape[2], ...] = annotation_cube
+            input_features['annotation'] = out_annotations
+            input_features['image'] = out_images
+        return input_features
+
+
 class Add_Bounding_Box_Indexes(Image_Processor):
     def __init__(self, wanted_vals_for_bbox=None):
         '''
@@ -166,13 +225,13 @@ class Add_Bounding_Box_Indexes(Image_Processor):
                 volumes = volumes[0]
                 c_start, r_start, z_start, c_stop, r_stop, z_stop = bounding_boxes
                 z_stop, r_stop, c_stop = z_start + z_stop, r_start + r_stop, c_start + c_stop
-            input_features['bounding_boxes_z_start_{}'.format(val)] = z_start
-            input_features['bounding_boxes_r_start_{}'.format(val)] = r_start
-            input_features['bounding_boxes_c_start_{}'.format(val)] = c_start
-            input_features['bounding_boxes_z_stop_{}'.format(val)] = z_stop
-            input_features['bounding_boxes_r_stop_{}'.format(val)] = r_stop
-            input_features['bounding_boxes_c_stop_{}'.format(val)] = c_stop
-            input_features['volumes_{}'.format(val)] = volumes
+                input_features['bounding_boxes_z_start_{}'.format(val)] = z_start
+                input_features['bounding_boxes_r_start_{}'.format(val)] = r_start
+                input_features['bounding_boxes_c_start_{}'.format(val)] = c_start
+                input_features['bounding_boxes_z_stop_{}'.format(val)] = z_stop
+                input_features['bounding_boxes_r_stop_{}'.format(val)] = r_stop
+                input_features['bounding_boxes_c_stop_{}'.format(val)] = c_stop
+                input_features['volumes_{}'.format(val)] = volumes
         return input_features
 
 
