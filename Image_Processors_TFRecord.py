@@ -108,6 +108,7 @@ class Split_Disease_Into_Cubes(Image_Processor):
             return out_features
         return input_features
 
+
 class Distribute_into_3D(Image_Processor):
     def __init__(self, min_z=0, max_z=np.inf, max_rows=np.inf, max_cols=np.inf, mirror_small_bits=True):
         self.max_z = max_z
@@ -181,17 +182,20 @@ class Distribute_into_2D(Image_Processor):
 
 
 class Normalize_to_annotation(Image_Processor):
-    def __init__(self, annotation_value=None):
+    def __init__(self, annotation_value_list=None):
         '''
-        :param annotation_value: mask value to normalize over
+        :param annotation_value: mask values to normalize over, [1]
         '''
-        assert annotation_value is not None, 'Need to provide a value'
-        self.annotation_value = annotation_value
+        assert annotation_value_list is not None, 'Need to provide a list of values'
+        self.annotation_value_list = annotation_value_list
 
     def parse(self, input_features):
         images = input_features['image']
         annotation = input_features['annotation']
-        data = images[annotation==self.annotation_value].flatten()
+        mask = np.zeros(annotation.shape)
+        for value in self.annotation_value_list:
+            mask += annotation == value
+        data = images[mask].flatten()
         counts, bins = np.histogram(data, bins=100)
         bins = bins[:-1]
         count_index = np.where(counts == np.max(counts))[0][-1]
@@ -214,6 +218,7 @@ class Normalize_to_annotation(Image_Processor):
         images = (images - mean_val) / std_val
         input_features['image'] = images
         return input_features
+
 
 def expand_box_indexes(z_start, z_stop, r_start, r_stop, c_start, c_stop, annotation_shape, bounding_box_expansion):
     z_start = max([0, z_start - bounding_box_expansion[0]])
