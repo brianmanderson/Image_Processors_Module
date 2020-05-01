@@ -105,6 +105,8 @@ class Return_Add_Mult_Disease(Image_Processor):
         zeros = tf.where(annotation > 0, 0, 0)
         mask = tf.repeat(mask,2,axis=-1)
         sum_vals = tf.concat([sum_vals_base, zeros], axis=-1)
+        annotation = tf.where(annotation == 2, 1, 0)
+        image_features['annotation'] = annotation
         image_features['mask'] = mask
         image_features['sum_vals'] = sum_vals
         return image_features
