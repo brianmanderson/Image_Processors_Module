@@ -232,7 +232,7 @@ def expand_box_indexes(z_start, z_stop, r_start, r_stop, c_start, c_stop, annota
 
 class Box_Images(Image_Processor):
     def __init__(self, wanted_vals_for_bbox=None,
-                 bounding_box_expansion=(10,10,10), power_val_z=1, power_val_r=1,
+                 bounding_box_expansion=(5,10,10), power_val_z=1, power_val_r=1,
                  power_val_c=1, min_images=None, min_rows=None, min_cols=None):
         '''
         :param wanted_vals_for_bbox: a list of values in integer form for bboxes
