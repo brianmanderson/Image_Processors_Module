@@ -44,7 +44,7 @@ class Clip_Images_By_Extension(Image_Processor):
         if start != -1 and stop != -1:
             image, annotation = image[start:stop, ...], annotation[start:stop, ...]
         input_features['image'] = image
-        input_features['annotation'] = annotation
+        input_features['annotation'] = annotation.astype('int8')
         return input_features
 
 
@@ -100,7 +100,7 @@ class Split_Disease_Into_Cubes(Image_Processor):
                 for box_index, cube in enumerate(stack):
                     temp_feature = OrderedDict()
                     temp_feature['image'] = cube[0][:self.cube_size[0]]
-                    temp_feature['annotation'] = cube[1][:self.cube_size[0]]
+                    temp_feature['annotation'] = cube[1][:self.cube_size[0]].astype('int8')
                     for key in input_features:  # Bring along anything else we care about
                         if key not in temp_feature.keys():
                             temp_feature[key] = input_features[key]
@@ -148,7 +148,7 @@ class Distribute_into_3D(Image_Processor):
             start, stop = get_start_stop(annotation, extension=0)
             image_features['image_path'] = image_path
             image_features['image'] = image
-            image_features['annotation'] = annotation
+            image_features['annotation'] = annotation.astype('int8')
             image_features['start'] = start
             image_features['stop'] = stop
             image_features['z_images'] = image.shape[0]
@@ -173,7 +173,7 @@ class Distribute_into_2D(Image_Processor):
             image_features = OrderedDict()
             image_features['image_path'] = image_path
             image_features['image'] = image[index]
-            image_features['annotation'] = annotation[index]
+            image_features['annotation'] = annotation[index].astype('int8')
             image_features['rows'] = rows
             image_features['cols'] = cols
             image_features['spacing'] = spacing[:-1]
@@ -276,7 +276,7 @@ class Box_Images(Image_Processor):
             if self.min_cols is not None:
                 min_cols = max([min_cols, self.min_cols])
             out_images = np.ones([min_images, min_rows, min_cols]) * np.min(image)
-            out_annotations = np.zeros([min_images, min_rows, min_cols])
+            out_annotations = np.zeros([min_images, min_rows, min_cols], dtype='int8')
             out_annotations[..., 0] = 1
             image_cube = image[z_start:z_start + min_images, r_start:r_start + min_rows, c_start:c_start + min_cols]
             annotation_cube = annotation[z_start:z_start + min_images, r_start:r_start + min_rows,
@@ -284,7 +284,7 @@ class Box_Images(Image_Processor):
             img_shape = image_cube.shape
             out_images[:img_shape[0], :img_shape[1], :img_shape[2], ...] = image_cube
             out_annotations[:img_shape[0], :img_shape[1], :img_shape[2], ...] = annotation_cube
-            input_features['annotation'] = out_annotations
+            input_features['annotation'] = out_annotations.astype('int8')
             input_features['image'] = out_images
         return input_features
 
