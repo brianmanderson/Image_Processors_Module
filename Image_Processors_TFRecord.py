@@ -195,7 +195,7 @@ class Normalize_to_annotation(Image_Processor):
         mask = np.zeros(annotation.shape)
         for value in self.annotation_value_list:
             mask += annotation == value
-        data = images[mask].flatten()
+        data = images[mask > 0].flatten()
         counts, bins = np.histogram(data, bins=100)
         bins = bins[:-1]
         count_index = np.where(counts == np.max(counts))[0][-1]

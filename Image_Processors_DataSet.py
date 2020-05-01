@@ -11,14 +11,25 @@ class Image_Processor(object):
 
 
 class Decode_Images_Annotations(Image_Processor):
+    def __init__(self, d_type_dict=None):
+        self.d_type_dict = d_type_dict
     def parse(self, image_features, *args, **kwargs):
         if 'z_images' in image_features:
-            tensor_image = tf.reshape(tf.io.decode_raw(image_features['image'], out_type='float'),
-                                      (image_features['z_images'], image_features['rows'],
-                                       image_features['cols']))
-            annotation_image = tf.reshape(tf.io.decode_raw(image_features['annotation'], out_type='int8'),
-                                          (image_features['z_images'], image_features['rows'],
-                                           image_features['cols']))
+            if 'image' in image_features:
+                dtype = 'float'
+                if 'image' in self.d_type_dict:
+                    dtype = self.d_type_dict['image']
+                image_features['image'] = tf.reshape(tf.io.decode_raw(image_features['image'], out_type=dtype),
+                                                     (image_features['z_images'], image_features['rows'],
+                                                      image_features['cols']))
+            if 'annotation' in image_features:
+                dtype = 'int8'
+                if 'annotation' in self.d_type_dict:
+                    dtype = self.d_type_dict['annotation']
+                image_features['annotation'] = tf.reshape(tf.io.decode_raw(image_features['annotation'],
+                                                                           out_type=dtype),
+                                                          (image_features['z_images'], image_features['rows'],
+                                                           image_features['cols']))
         else:
             tensor_image = tf.reshape(tf.io.decode_raw(image_features['image'], out_type='float'),
                                       (image_features['rows'], image_features['cols']))
