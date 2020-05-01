@@ -49,7 +49,7 @@ class Clip_Images_By_Extension(Image_Processor):
 
 
 class Split_Disease_Into_Cubes(Image_Processor):
-    def __init__(self, disease_annotation=None, cube_size=(16, 100, 100), min_voxel_volume=0, max_voxels=np.inf):
+    def __init__(self, disease_annotation=None, cube_size=(16, 120, 120), min_voxel_volume=0, max_voxels=np.inf):
         '''
         :param disease_annotation: integer for disease annotation
         '''
@@ -247,16 +247,15 @@ class Box_Images(Image_Processor):
     def parse(self, input_features):
         annotation = input_features['annotation']
         image = input_features['image']
+        mask = np.zeros(annotation.shape)
         for val in self.wanted_vals_for_bbox:
-            if 'bonding_boxes_z_start_{}'.format(val) not in input_features:
-                add_indexes = Add_Bounding_Box_Indexes(self.wanted_vals_for_bbox)
-                add_indexes.parse(input_features)
-            z_start = input_features['bounding_boxes_z_start_{}'.format(val)]
-            r_start = input_features['bounding_boxes_r_start_{}'.format(val)]
-            c_start = input_features['bounding_boxes_c_start_{}'.format(val)]
-            z_stop = input_features['bounding_boxes_z_stop_{}'.format(val)]
-            r_stop = input_features['bounding_boxes_r_stop_{}'.format(val)]
-            c_stop = input_features['bounding_boxes_c_stop_{}'.format(val)]
+            mask[annotation == val] = 1
+        input_features['mask'] = mask
+        for val in [1]:
+            add_indexes = Add_Bounding_Box_Indexes([val],label_name='mask')
+            add_indexes.parse(input_features)
+            z_start, z_stop, r_start, r_stop, c_start, c_stop = add_bounding_box_to_dict(
+                input_features['bounding_boxes_{}'.format(val)][0], return_indexes=True)
 
             z_start, z_stop, r_start, r_stop, c_start, c_stop = expand_box_indexes(z_start, z_stop, r_start, r_stop,
                                                                                    c_start, c_stop,
@@ -290,16 +289,17 @@ class Box_Images(Image_Processor):
 
 
 class Add_Bounding_Box_Indexes(Image_Processor):
-    def __init__(self, wanted_vals_for_bbox=None, add_to_dictionary=False):
+    def __init__(self, wanted_vals_for_bbox=None, add_to_dictionary=False, label_name='annotation'):
         '''
         :param wanted_vals_for_bbox: a list of values in integer form for bboxes
         '''
         assert type(wanted_vals_for_bbox) is list, 'Provide a list for bboxes'
         self.wanted_vals_for_bbox=wanted_vals_for_bbox
         self.add_to_dictionary = add_to_dictionary
+        self.label_name = label_name
 
     def parse(self, input_features):
-        annotation = input_features['annotation']
+        annotation = input_features[self.label_name]
         for val in self.wanted_vals_for_bbox:
             slices = np.where(annotation == val)
             if slices:
