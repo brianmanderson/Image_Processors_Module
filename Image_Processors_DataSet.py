@@ -43,6 +43,29 @@ class Decode_Images_Annotations(Image_Processor):
         return image_features
 
 
+class Random_Noise(Image_Processor):
+    def __init__(self, max_noise=2.5, wanted_keys=['image']):
+        '''
+        Return the image feature with an additive noise randomly weighted between [0.0, max_noise)
+        :param max_noise: maximum magnitude of the noise in HU (apply before normalization)
+        '''
+        self.max_noise = max_noise
+        self.wanted_keys = wanted_keys
+
+    def parse(self, image_features, *args, **kwargs):
+        for key in self.wanted_keys:
+            if key in image_features:
+                data = image_features[key]
+                dtype = data.dtype
+                data = tf.cast(data,'float32')
+                data += tf.random.uniform(shape=[], minval=0.0, maxval=self.max_noise,
+                                          dtype='float32') * tf.random.normal(tf.shape(image_features['image']),
+                                                                              mean=0.0, stddev=1.0, dtype='float32')
+                data = tf.cast(data, dtype)
+                image_features[key] = data
+        return image_features
+
+
 class Return_Outputs(Image_Processor):
     '''
     No image processors should occur after this, this will turn your dictionary into a set of tensors, usually
