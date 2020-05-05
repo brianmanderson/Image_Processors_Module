@@ -33,6 +33,36 @@ class Image_Processor(object):
         return input_features
 
 
+class Add_Images_And_Annotations(Image_Processor):
+    def parse(self, input_features):
+        image_path = input_features['image_path']
+        annotation_path = input_features['annotation_path']
+        image_handle, annotation_handle = sitk.ReadImage(image_path), sitk.ReadImage(annotation_path)
+        annotation = sitk.GetArrayFromImage(annotation_handle).astype('int8')
+        image = sitk.GetArrayFromImage(image_handle).astype('float32')
+        input_features['image'] = image
+        input_features['annotation'] = annotation
+        input_features['spacing'] = np.asarray(annotation_handle.GetSpacing(), dtype='float32')
+        return input_features
+
+
+class Add_Dose(Image_Processor):
+    def parse(self, input_features):
+        image_path = input_features['image_path']
+        dose_path = image_path.replace('Data','Dose')
+        dose_handle = sitk.ReadImage(dose_path)
+        dose = sitk.GetArrayFromImage(dose_handle).astype('float32')
+        spacing = dose_handle.GetSpacing()
+        input_features['dose'] = dose
+        input_features['dose_images'] = dose.shape[0]
+        input_features['dose_rows'] = dose.shape[1]
+        input_features['dose_cols'] = dose.shape[2]
+        input_features['dose_spacing_images'] = spacing[0]
+        input_features['dose_spacing_rows'] = spacing[1]
+        input_features['dose_spacing_cols'] = spacing[2]
+        return input_features
+
+
 class Clip_Images_By_Extension(Image_Processor):
     def __init__(self, extension=np.inf):
         self.extension = extension
