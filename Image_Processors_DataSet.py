@@ -89,6 +89,7 @@ class Return_Outputs(Image_Processor):
                 outputs.append(image_features[key])
             else:
                 print('WARNING\n\n\n{} not in image_features\n\n\n'.format(key))
+        del image_features
         return tuple(inputs), tuple(outputs)
 
 
