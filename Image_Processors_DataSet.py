@@ -40,6 +40,13 @@ class Decode_Images_Annotations(Image_Processor):
         if 'spacing' in image_features:
             spacing = tf.io.decode_raw(image_features['spacing'], out_type='float32')
             image_features['spacing'] = spacing
+        if 'dose' in image_features:
+            dose_dtype = 'float'
+            if 'dose' in self.d_type_dict:
+                dose_dtype = self.d_type_dict['dose']
+            image_features['dose'] = tf.reshape(tf.io.decode_raw(image_features['dose'], out_type=dose_dtype),
+                                                 (image_features['dose_images'], image_features['dose_rows'],
+                                                  image_features['dose_cols']))
         return image_features
 
 
@@ -64,6 +71,16 @@ class Random_Noise(Image_Processor):
                 data = tf.cast(data, dtype)
                 image_features[key] = data
         return image_features
+
+
+class Combine_image_RT_Dose(Image_Processor):
+    def parse(self, input_features, *args, **kwargs):
+        image = input_features['image']
+        rt = input_features['annotation']
+        dose = input_features['dose']
+        output = tf.concat([image,rt,dose],axis=-1)
+        input_features['combined'] = output
+        return input_features
 
 
 class Return_Outputs(Image_Processor):
@@ -180,6 +197,8 @@ class Return_Lung(Image_Processor):
         if self.dual_output:
             image_features['lung'] = tf.cast(image_features['annotation'] > 0,dtype='float32')
         return image_features
+
+
 class Normalize_Images(Image_Processor):
     def __init__(self, mean_val=0, std_val=1):
         '''
