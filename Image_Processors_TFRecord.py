@@ -46,6 +46,14 @@ class Add_Images_And_Annotations(Image_Processor):
         return input_features
 
 
+class Add_Outcome(Image_Processor):
+    def parse(self, input_features):
+        image_path = input_features['image_path']
+        outcome = image_path.replace('Overall_Dat...')
+        input_features['Outcome'] = 1
+        return input_features
+
+
 class Add_Dose(Image_Processor):
     def parse(self, input_features):
         image_path = input_features['image_path']
@@ -185,6 +193,9 @@ class Distribute_into_3D(Image_Processor):
             image_features['rows'] = image.shape[1]
             image_features['cols'] = image.shape[2]
             image_features['spacing'] = spacing
+            for key in input_features.keys():
+                if key not in image_features.keys():
+                    image_features[key] = input_features[key] # Pass along all other keys.. be careful
             out_features['Image_{}'.format(index)] = image_features
             start_chop += step
         return out_features

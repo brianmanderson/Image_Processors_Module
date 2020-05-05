@@ -246,9 +246,6 @@ class Threshold_Images(Image_Processor):
         '''
         :param lower_bound: Lower bound to threshold images, normally -3.55 if Normalize_Images is used previously
         :param upper_bound: Upper bound to threshold images, normally 3.55 if Normalize_Images is used previously
-        :param inverse_image: Should the image be inversed after threshold?
-        :param post_load: should this be done each iteration? If False, gets slotted under pre_load_process
-        :param final_scale_value: Value to scale the entire image to (255 scales to 0-255), (1 scales to 0-1)
         '''
         self.lower = tf.constant(lower_bound, dtype='float32')
         self.upper = tf.constant(upper_bound, dtype='float32')
