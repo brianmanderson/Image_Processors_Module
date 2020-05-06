@@ -148,11 +148,13 @@ class Split_Disease_Into_Cubes(Image_Processor):
 
 
 class Distribute_into_3D(Image_Processor):
-    def __init__(self, min_z=0, max_z=np.inf, max_rows=np.inf, max_cols=np.inf, mirror_small_bits=True):
+    def __init__(self, min_z=0, max_z=np.inf, max_rows=np.inf, max_cols=np.inf, mirror_small_bits=True,
+                 chop_ends=False):
         self.max_z = max_z
         self.min_z = min_z
         self.max_rows, self.max_cols = max_rows, max_cols
         self.mirror_small_bits = mirror_small_bits
+        self.chop_ends = chop_ends
 
     def parse(self, input_features):
         out_features = OrderedDict()
@@ -183,7 +185,11 @@ class Distribute_into_3D(Image_Processor):
                         annotation = np.concatenate([annotation, mirror_annotation], axis=0)
                     image = image[:max([step, self.min_z])]
                     annotation = annotation[:max([step, self.min_z])]
+                elif self.chop_ends:
+                    continue
             start, stop = get_start_stop(annotation, extension=0)
+            if start == -1 or stop == -1:
+                continue # no annotation here
             image_features['image_path'] = image_path
             image_features['image'] = image
             image_features['annotation'] = annotation.astype('int8')
