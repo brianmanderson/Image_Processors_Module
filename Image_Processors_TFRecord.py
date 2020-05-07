@@ -85,6 +85,39 @@ class Clip_Images_By_Extension(Image_Processor):
         input_features['annotation'] = annotation.astype('int8')
         return input_features
 
+class Normalize_MRI(Image_Processor):
+    def parse(self, input_features):
+        image_handle = sitk.GetImageFromArray(input_features['image'])
+        image = input_features['image']
+
+        normalizationFilter = sitk.IntensityWindowingImageFilter()
+        upperPerc = np.percentile(image, 99)
+        lowerPerc = np.percentile(image,1)
+
+        normalizationFilter.SetOutputMaximum(255.0)
+        normalizationFilter.SetOutputMinimum(0.0)
+        normalizationFilter.SetWindowMaximum(upperPerc)
+        normalizationFilter.SetWindowMinimum(lowerPerc)
+
+        normalizedImage = normalizationFilter.Execute(image_handle)
+
+        image = sitk.GetArrayFromImage(normalizedImage)
+        input_features['image'] = image
+        return input_features
+
+class N4BiasCorrection(Image_Processor):
+    def parse(self, input_features):
+        image_handle = sitk.GetImageFromArray(input_features['image'])
+        corrector = sitk.N4BiasFieldCorrectionImageFilter()
+        corrector.SetMaximumNumberOfIterations([int(2)*2])
+        try:
+            N4_normalized_image = corrector.Execute(image_handle)
+        except RuntimeError:
+            N4_normalized_image = corrector.Execute(image_handle)
+        input_features['image'] = sitk.GetArrayFromImage(N4_normalized_image)
+        return input_features
+
+
 
 class Split_Disease_Into_Cubes(Image_Processor):
     def __init__(self, disease_annotation=None, cube_size=(16, 120, 120), min_voxel_volume=0, max_voxels=np.inf):
