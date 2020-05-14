@@ -3,6 +3,7 @@ __author__ = 'Brian M Anderson'
 import SimpleITK as sitk
 import numpy as np
 from _collections import OrderedDict
+from .Resample_Class.Resample_Class import Resample_Class_Object
 from .Plot_And_Scroll_Images.Plot_Scroll_Images import plot_scroll_Image, plt
 
 
@@ -30,6 +31,36 @@ def get_bounding_boxes(annotation_handle,value):
 
 class Image_Processor(object):
     def parse(self, input_features):
+        return input_features
+
+
+class Resampler(Image_Processor):
+    def __init__(self, desired_output_spacing=(None,None,None)):
+        self.desired_output_spacing = desired_output_spacing
+
+    def parse(self, input_features):
+        input_spacing = tuple([float(i) for i in input_features['spacing']])
+        image_handle = sitk.GetImageFromArray(input_features['image'])
+        image_handle.SetSpacing(input_spacing)
+        annotation_handle = sitk.GetImageFromArray(input_features['annotation'])
+        annotation_handle.SetSpacing(input_spacing)
+        output_spacing = []
+        for index in range(3):
+            if self.desired_output_spacing[index] is None:
+                output_spacing.append(input_spacing[index])
+            else:
+                output_spacing.append(self.desired_output_spacing[index])
+        output_spacing = tuple(output_spacing)
+        if output_spacing != input_spacing:
+            resampler = Resample_Class_Object()
+            print('Resampling {} to {}'.format(input_spacing,output_spacing))
+            image_handle = resampler.resample_image(input_image=image_handle,input_spacing=input_spacing,
+                                                         output_spacing=output_spacing,is_annotation=False)
+            annotation_handle = resampler.resample_image(input_image=annotation_handle,input_spacing=input_spacing,
+                                                              output_spacing=output_spacing,is_annotation=True)
+            input_features['image'] = sitk.GetArrayFromImage(image_handle)
+            input_features['annotation'] = sitk.GetArrayFromImage(annotation_handle)
+            input_features['spacing'] = np.asarray(annotation_handle.GetSpacing(), dtype='float32')
         return input_features
 
 
@@ -104,6 +135,7 @@ class Normalize_MRI(Image_Processor):
         image = sitk.GetArrayFromImage(normalizedImage)
         input_features['image'] = image
         return input_features
+
 
 class N4BiasCorrection(Image_Processor):
     def parse(self, input_features):
@@ -348,6 +380,13 @@ class Box_Images(Image_Processor):
             remainder_z, remainder_r, remainder_c = self.power_val_z - z_total % self.power_val_z if z_total % self.power_val_z != 0 else 0, \
                                                     self.power_val_r - r_total % self.power_val_r if r_total % self.power_val_r != 0 else 0, \
                                                     self.power_val_c - c_total % self.power_val_c if c_total % self.power_val_c != 0 else 0
+            remainders = np.asarray([remainder_z, remainder_r, remainder_c])
+            z_start, z_stop, r_start, r_stop, c_start, c_stop = expand_box_indexes(z_start, z_stop, r_start, r_stop,
+                                                                                   c_start, c_stop,
+                                                                                   annotation_shape=
+                                                                                   annotation.shape,
+                                                                                   bounding_box_expansion=
+                                                                                   remainders // 2 + 1)
             min_images, min_rows, min_cols = z_total + remainder_z, r_total + remainder_r, c_total + remainder_c
             if self.min_images is not None:
                 min_images = max([min_images, self.min_images])
