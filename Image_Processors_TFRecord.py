@@ -36,35 +36,31 @@ class Image_Processor(object):
 
 class Resampler(Image_Processor):
     def __init__(self, desired_output_spacing=(None,None,None)):
-        self.resampler = None
-        for sample in desired_output_spacing:
-            if sample is not None:
-                self.resampler = Resample_Class_Object()
-                break
         self.desired_output_spacing = desired_output_spacing
 
     def parse(self, input_features):
-        if self.resampler is not None:
-            input_spacing = tuple([float(i) for i in input_features['spacing']])
-            image_handle = sitk.GetImageFromArray(input_features['image'])
-            image_handle.SetSpacing(input_spacing)
-            annotation_handle = sitk.GetImageFromArray(input_features['annotation'])
-            annotation_handle.SetSpacing(input_spacing)
-            output_spacing = []
-            for index in range(3):
-                if self.desired_output_spacing[index] is None:
-                    output_spacing.append(input_spacing[index])
-                else:
-                    output_spacing.append(self.desired_output_spacing[index])
-            output_spacing = tuple(output_spacing)
-            if output_spacing != input_spacing:
-                print('Resampling {} to {}'.format(input_spacing,output_spacing))
-                image_handle = self.resampler.resample_image(input_image=image_handle,input_spacing=input_spacing,
-                                                             output_spacing=output_spacing,is_annotation=False)
-                annotation_handle = self.resampler.resample_image(input_image=annotation_handle,input_spacing=input_spacing,
-                                                                  output_spacing=output_spacing,is_annotation=True)
-                input_features['image'] = sitk.GetArrayFromImage(image_handle)
-                input_features['annotation'] = sitk.GetArrayFromImage(annotation_handle)
+        input_spacing = tuple([float(i) for i in input_features['spacing']])
+        image_handle = sitk.GetImageFromArray(input_features['image'])
+        image_handle.SetSpacing(input_spacing)
+        annotation_handle = sitk.GetImageFromArray(input_features['annotation'])
+        annotation_handle.SetSpacing(input_spacing)
+        output_spacing = []
+        for index in range(3):
+            if self.desired_output_spacing[index] is None:
+                output_spacing.append(input_spacing[index])
+            else:
+                output_spacing.append(self.desired_output_spacing[index])
+        output_spacing = tuple(output_spacing)
+        if output_spacing != input_spacing:
+            resampler = Resample_Class_Object()
+            print('Resampling {} to {}'.format(input_spacing,output_spacing))
+            image_handle = resampler.resample_image(input_image=image_handle,input_spacing=input_spacing,
+                                                         output_spacing=output_spacing,is_annotation=False)
+            annotation_handle = resampler.resample_image(input_image=annotation_handle,input_spacing=input_spacing,
+                                                              output_spacing=output_spacing,is_annotation=True)
+            input_features['image'] = sitk.GetArrayFromImage(image_handle)
+            input_features['annotation'] = sitk.GetArrayFromImage(annotation_handle)
+            input_features['spacing'] = np.asarray(annotation_handle.GetSpacing(), dtype='float32')
         return input_features
 
 
