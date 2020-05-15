@@ -85,6 +85,7 @@ class Clip_Images_By_Extension(Image_Processor):
         input_features['annotation'] = annotation.astype('int8')
         return input_features
 
+
 class Normalize_MRI(Image_Processor):
     def parse(self, input_features):
         image_handle = sitk.GetImageFromArray(input_features['image'])
@@ -260,6 +261,24 @@ class Distribute_into_2D(Image_Processor):
             image_features['spacing'] = spacing[:-1]
             out_features['Image_{}'.format(index)] = image_features
         return out_features
+
+
+class NormalizeParotidMR(Image_Processor):
+    def parse(self, input_features):
+        images = input_features['image']
+        data = images.flatten()
+        counts, bins = np.histogram(data, bins=1000)
+        count_index = 0
+        count_value = 0
+        while count_value/np.sum(counts) < .3: # Throw out the bottom 30 percent of data, as that is usually just 0s
+            count_value += counts[count_index]
+            count_index += 1
+        min_bin = bins[count_index]
+        data = data[data>min_bin]
+        mean_val, std_val = np.mean(data), np.std(data)
+        images = (images - mean_val)/std_val
+        input_features['image'] = images
+        return input_features
 
 
 class Normalize_to_annotation(Image_Processor):
