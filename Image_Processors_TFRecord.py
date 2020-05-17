@@ -3,6 +3,7 @@ __author__ = 'Brian M Anderson'
 import SimpleITK as sitk
 import numpy as np
 from _collections import OrderedDict
+from .Resample_Class.Resample_Class import Resample_Class_Object
 from .Plot_And_Scroll_Images.Plot_Scroll_Images import plot_scroll_Image, plt
 
 
@@ -30,6 +31,36 @@ def get_bounding_boxes(annotation_handle,value):
 
 class Image_Processor(object):
     def parse(self, input_features):
+        return input_features
+
+
+class Resampler(Image_Processor):
+    def __init__(self, desired_output_spacing=(None,None,None)):
+        self.desired_output_spacing = desired_output_spacing
+
+    def parse(self, input_features):
+        input_spacing = tuple([float(i) for i in input_features['spacing']])
+        image_handle = sitk.GetImageFromArray(input_features['image'])
+        image_handle.SetSpacing(input_spacing)
+        annotation_handle = sitk.GetImageFromArray(input_features['annotation'])
+        annotation_handle.SetSpacing(input_spacing)
+        output_spacing = []
+        for index in range(3):
+            if self.desired_output_spacing[index] is None:
+                output_spacing.append(input_spacing[index])
+            else:
+                output_spacing.append(self.desired_output_spacing[index])
+        output_spacing = tuple(output_spacing)
+        if output_spacing != input_spacing:
+            resampler = Resample_Class_Object()
+            print('Resampling {} to {}'.format(input_spacing,output_spacing))
+            image_handle = resampler.resample_image(input_image=image_handle,input_spacing=input_spacing,
+                                                         output_spacing=output_spacing,is_annotation=False)
+            annotation_handle = resampler.resample_image(input_image=annotation_handle,input_spacing=input_spacing,
+                                                              output_spacing=output_spacing,is_annotation=True)
+            input_features['image'] = sitk.GetArrayFromImage(image_handle)
+            input_features['annotation'] = sitk.GetArrayFromImage(annotation_handle)
+            input_features['spacing'] = np.asarray(annotation_handle.GetSpacing(), dtype='float32')
         return input_features
 
 
@@ -84,6 +115,41 @@ class Clip_Images_By_Extension(Image_Processor):
         input_features['image'] = image
         input_features['annotation'] = annotation.astype('int8')
         return input_features
+
+
+class Normalize_MRI(Image_Processor):
+    def parse(self, input_features):
+        image_handle = sitk.GetImageFromArray(input_features['image'])
+        image = input_features['image']
+
+        normalizationFilter = sitk.IntensityWindowingImageFilter()
+        upperPerc = np.percentile(image, 99)
+        lowerPerc = np.percentile(image,1)
+
+        normalizationFilter.SetOutputMaximum(255.0)
+        normalizationFilter.SetOutputMinimum(0.0)
+        normalizationFilter.SetWindowMaximum(upperPerc)
+        normalizationFilter.SetWindowMinimum(lowerPerc)
+
+        normalizedImage = normalizationFilter.Execute(image_handle)
+
+        image = sitk.GetArrayFromImage(normalizedImage)
+        input_features['image'] = image
+        return input_features
+
+
+class N4BiasCorrection(Image_Processor):
+    def parse(self, input_features):
+        image_handle = sitk.GetImageFromArray(input_features['image'])
+        corrector = sitk.N4BiasFieldCorrectionImageFilter()
+        corrector.SetMaximumNumberOfIterations([int(2)*2])
+        try:
+            N4_normalized_image = corrector.Execute(image_handle)
+        except RuntimeError:
+            N4_normalized_image = corrector.Execute(image_handle)
+        input_features['image'] = sitk.GetArrayFromImage(N4_normalized_image)
+        return input_features
+
 
 
 class Split_Disease_Into_Cubes(Image_Processor):
@@ -229,6 +295,24 @@ class Distribute_into_2D(Image_Processor):
         return out_features
 
 
+class NormalizeParotidMR(Image_Processor):
+    def parse(self, input_features):
+        images = input_features['image']
+        data = images.flatten()
+        counts, bins = np.histogram(data, bins=1000)
+        count_index = 0
+        count_value = 0
+        while count_value/np.sum(counts) < .3: # Throw out the bottom 30 percent of data, as that is usually just 0s
+            count_value += counts[count_index]
+            count_index += 1
+        min_bin = bins[count_index]
+        data = data[data>min_bin]
+        mean_val, std_val = np.mean(data), np.std(data)
+        images = (images - mean_val)/std_val
+        input_features['image'] = images
+        return input_features
+
+
 class Normalize_to_annotation(Image_Processor):
     def __init__(self, annotation_value_list=None, mirror_max=False):
         '''
@@ -318,6 +402,13 @@ class Box_Images(Image_Processor):
             remainder_z, remainder_r, remainder_c = self.power_val_z - z_total % self.power_val_z if z_total % self.power_val_z != 0 else 0, \
                                                     self.power_val_r - r_total % self.power_val_r if r_total % self.power_val_r != 0 else 0, \
                                                     self.power_val_c - c_total % self.power_val_c if c_total % self.power_val_c != 0 else 0
+            remainders = np.asarray([remainder_z, remainder_r, remainder_c])
+            z_start, z_stop, r_start, r_stop, c_start, c_stop = expand_box_indexes(z_start, z_stop, r_start, r_stop,
+                                                                                   c_start, c_stop,
+                                                                                   annotation_shape=
+                                                                                   annotation.shape,
+                                                                                   bounding_box_expansion=
+                                                                                   remainders // 2 + 1)
             min_images, min_rows, min_cols = z_total + remainder_z, r_total + remainder_r, c_total + remainder_c
             if self.min_images is not None:
                 min_images = max([min_images, self.min_images])

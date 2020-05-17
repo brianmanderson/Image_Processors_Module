@@ -139,17 +139,16 @@ class Ensure_Image_Proportions(Image_Processor):
 
 
 class Return_Add_Mult_Disease(Image_Processor):
+    def __init__(self, on_disease=True):
+        self.on_disease = on_disease
+
     def parse(self, image_features, *args, **kwargs):
         annotation = image_features['annotation']
         mask = tf.where(annotation > 0, 1, 0)
-        annotation = tf.where(annotation == 2, 1, 0)
-        image_features['annotation'] = annotation
+        if self.on_disease:
+            annotation = tf.where(annotation == 2, 1, 0)
+            image_features['annotation'] = annotation
         image_features['mask'] = mask
-        # sum_vals_base = tf.where(annotation > 0, 0, 1)
-        # zeros = tf.where(annotation > 0, 0, 0)
-        # mask = tf.repeat(mask,2,axis=-1)
-        # sum_vals = tf.concat([sum_vals_base, zeros], axis=-1)
-        # image_features['sum_vals'] = sum_vals
         return image_features
 
 
