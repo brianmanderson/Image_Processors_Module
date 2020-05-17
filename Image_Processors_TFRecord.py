@@ -230,12 +230,13 @@ class Distribute_into_2D(Image_Processor):
 
 
 class Normalize_to_annotation(Image_Processor):
-    def __init__(self, annotation_value_list=None):
+    def __init__(self, annotation_value_list=None, mirror_max=False):
         '''
         :param annotation_value: mask values to normalize over, [1]
         '''
         assert annotation_value_list is not None, 'Need to provide a list of values'
         self.annotation_value_list = annotation_value_list
+        self.mirror_max = mirror_max
 
     def parse(self, input_features):
         images = input_features['image']
@@ -260,6 +261,8 @@ class Normalize_to_annotation(Image_Processor):
         min_50 = np.where(half_lower == np.min(half_lower))[0][0]
 
         min_values = bins[count_index - min_50]
+        if self.mirror_max:
+            min_values = bins[count_index - max_50]  # Good for non-normal distributions, just mirror the other FWHM
         max_values = bins[count_index + max_50]
         data = data[np.where((data >= min_values) & (data <= max_values))]
         mean_val, std_val = np.mean(data), np.std(data)
