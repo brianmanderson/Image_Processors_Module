@@ -121,6 +121,7 @@ class Clip_Images_By_Extension(Image_Processor):
         input_features['annotation'] = annotation.astype('int8')
         return input_features
 
+
 class Normalize_MRI(Image_Processor):
     def parse(self, input_features):
         image_handle = sitk.GetImageFromArray(input_features['image'])
@@ -299,13 +300,32 @@ class Distribute_into_2D(Image_Processor):
         return out_features
 
 
+class NormalizeParotidMR(Image_Processor):
+    def parse(self, input_features):
+        images = input_features['image']
+        data = images.flatten()
+        counts, bins = np.histogram(data, bins=1000)
+        count_index = 0
+        count_value = 0
+        while count_value/np.sum(counts) < .3: # Throw out the bottom 30 percent of data, as that is usually just 0s
+            count_value += counts[count_index]
+            count_index += 1
+        min_bin = bins[count_index]
+        data = data[data>min_bin]
+        mean_val, std_val = np.mean(data), np.std(data)
+        images = (images - mean_val)/std_val
+        input_features['image'] = images
+        return input_features
+
+
 class Normalize_to_annotation(Image_Processor):
-    def __init__(self, annotation_value_list=None):
+    def __init__(self, annotation_value_list=None, mirror_max=False):
         '''
         :param annotation_value: mask values to normalize over, [1]
         '''
         assert annotation_value_list is not None, 'Need to provide a list of values'
         self.annotation_value_list = annotation_value_list
+        self.mirror_max = mirror_max
 
     def parse(self, input_features):
         images = input_features['image']
@@ -330,6 +350,8 @@ class Normalize_to_annotation(Image_Processor):
         min_50 = np.where(half_lower == np.min(half_lower))[0][0]
 
         min_values = bins[count_index - min_50]
+        if self.mirror_max:
+            min_values = bins[count_index - max_50]  # Good for non-normal distributions, just mirror the other FWHM
         max_values = bins[count_index + max_50]
         data = data[np.where((data >= min_values) & (data <= max_values))]
         mean_val, std_val = np.mean(data), np.std(data)
