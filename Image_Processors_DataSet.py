@@ -1,6 +1,7 @@
 __author__ = 'Brian M Anderson'
 # Created on 4/8/2020
 import tensorflow as tf
+import tensorflow_addons as tfa
 import numpy as np
 from .Plot_And_Scroll_Images.Plot_Scroll_Images import plot_scroll_Image, plt
 
@@ -81,6 +82,57 @@ class Combine_image_RT_Dose(Image_Processor):
         output = tf.concat([image,rt,dose],axis=-1)
         input_features['combined'] = output
         return input_features
+
+
+def to_categorical(y, num_classes=None, dtype='float32'):
+    categorical = []
+    if not num_classes:
+        num_classes = tf.reduce_max(y) + 1
+    for i in tf.range(num_classes):
+        categorical.append(tf.where(y==tf.cast(i,y.dtype),1,0))
+    categorical = tf.concat(categorical,axis=-1)
+    return tf.cast(categorical,dtype)
+
+
+class Fuzzy_Segment_Liver_Lobes(Image_Processor):
+    def __init__(self, min_val=0, max_val=None, num_classes=9):
+        '''
+        :param variation: margin to expand region, mm. np.arange(start=0, stop=1, step=1), in mm
+        '''
+        self.min_val = min_val
+        self.max_val = max_val
+        self.num_classes = num_classes
+    
+    def parse(self, image_features, *args, **kwargs):
+        if type(image_features) is dict:
+            annotation = image_features['annotation']
+        else:
+            annotation = image_features[-1][-1]
+        annotation = to_categorical(annotation,9)
+        size = tf.random.uniform([2],minval=self.min_val, maxval=self.max_val)
+        filter_shape = tuple(tf.cast(tf.divide(size,image_features['spacing'][:2]), dtype=tf.dtypes.float32))
+
+        # Explicitly pad the image
+
+        filter_height, filter_width = filter_shape
+        pad_top = (filter_height - 1) // 2
+        pad_bottom = filter_height - 1 - pad_top
+        pad_left = (filter_width - 1) // 2
+        pad_right = filter_width - 1 - pad_left
+        paddings = [[0, 0], [pad_top, pad_bottom], [pad_left, pad_right], [0, 0]]
+        annotation = tf.pad(annotation, paddings, mode='CONSTANT')
+
+        # Filter of shape (filter_width, filter_height, in_channels, 1)
+        # has the value of 1 for each element.
+        area = tf.math.reduce_prod(filter_shape)
+        filter_shape += (tf.shape(annotation)[-1], 1)
+        kernel = tf.ones(shape=filter_shape, dtype=annotation.dtype)
+
+        annotation = tf.nn.depthwise_conv2d(annotation, kernel, strides=(1, 1, 1, 1), padding="VALID")
+        annotation = tf.divide(annotation, area)
+        annotation = tf.divide(annotation, tf.expand_dims(tf.reduce_sum(annotation, axis=-1),axis=-1))
+        image_features['annotation'] = annotation
+        return image_features
 
 
 class Return_Outputs(Image_Processor):
