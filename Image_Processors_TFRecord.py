@@ -7,6 +7,25 @@ from .Resample_Class.Resample_Class import Resample_Class_Object
 from .Plot_And_Scroll_Images.Plot_Scroll_Images import plot_scroll_Image, plt
 
 
+def to_categorical(y, num_classes=None, dtype='float32'):
+    """Converts a class vector (integers) to binary class matrix.
+    Taken from tf.keras.utils.to_categorical
+    """
+    y = np.array(y, dtype='int')
+    input_shape = y.shape
+    if input_shape and input_shape[-1] == 1 and len(input_shape) > 1:
+        input_shape = tuple(input_shape[:-1])
+    y = y.ravel()
+    if not num_classes:
+        num_classes = np.max(y) + 1
+    n = y.shape[0]
+    categorical = np.zeros((n, num_classes), dtype=dtype)
+    categorical[np.arange(n), y] = 1
+    output_shape = input_shape + (num_classes,)
+    categorical = np.reshape(categorical, output_shape)
+    return categorical
+
+
 def get_start_stop(annotation, extension=np.inf, desired_val=1):
     non_zero_values = np.where(np.max(annotation,axis=(1,2)) >= desired_val)[0]
     start, stop = -1, -1
@@ -31,6 +50,16 @@ def get_bounding_boxes(annotation_handle,value):
 
 class Image_Processor(object):
     def parse(self, input_features):
+        return input_features
+
+
+class To_Categorical(Image_Processor):
+    def __init__(self, num_classes=9):
+        self.num_classes = num_classes
+
+    def parse(self, input_features):
+        annotation = input_features['annotation']
+        input_features['annotation'] = to_categorical(annotation,self.num_classes)
         return input_features
 
 

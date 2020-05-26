@@ -83,17 +83,7 @@ class Combine_image_RT_Dose(Image_Processor):
         input_features['combined'] = output
         return input_features
 
-
-def to_categorical(y, num_classes=None, dtype='float32'):
-    categorical = []
-    if not num_classes:
-        num_classes = tf.reduce_max(y) + 1
-    for i in tf.range(num_classes):
-        categorical.append(tf.where(y==tf.cast(i,y.dtype),1,0))
-    categorical = tf.concat(categorical,axis=-1)
-    return tf.cast(categorical,dtype)
-
-
+from tensorflow.keras.utils import to_categorical
 class Fuzzy_Segment_Liver_Lobes(Image_Processor):
     def __init__(self, min_val=0, max_val=None, num_classes=9):
         '''
@@ -109,6 +99,8 @@ class Fuzzy_Segment_Liver_Lobes(Image_Processor):
         else:
             annotation = image_features[-1][-1]
         annotation = to_categorical(annotation,9)
+        image_features['annotation'] = annotation
+        return image_features
         size = tf.random.uniform([2],minval=self.min_val, maxval=self.max_val)
         filter_shape = tuple(tf.cast(tf.divide(size,image_features['spacing'][:2]), dtype=tf.dtypes.float32))
 
