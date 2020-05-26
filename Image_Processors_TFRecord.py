@@ -60,6 +60,7 @@ class To_Categorical(Image_Processor):
     def parse(self, input_features):
         annotation = input_features['annotation']
         input_features['annotation'] = to_categorical(annotation,self.num_classes)
+        input_features['num_classes'] = self.num_classes
         return input_features
 
 
