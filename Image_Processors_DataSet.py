@@ -2,6 +2,12 @@ __author__ = 'Brian M Anderson'
 # Created on 4/8/2020
 import tensorflow as tf
 import numpy as np
+from tensorflow.python.framework import tensor_shape
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import random_ops
+from tensorflow.python.framework import ops
 from .Plot_And_Scroll_Images.Plot_Scroll_Images import plot_scroll_Image, plt
 
 
@@ -241,22 +247,94 @@ class Cast_Data(Image_Processor):
         return image_features
 
 
+def fix_image_flip_shape(image, result):
+    """Set the shape to 3 dimensional if we don't know anything else.
+
+    Args:
+    image: original image size
+    result: flipped or transformed image
+
+    Returns:
+    An image whose shape is at least (None, None, None).
+    """
+    image_shape = image.get_shape()
+    if image_shape == tensor_shape.unknown_shape():
+        result.set_shape([None, None, None])
+    else:
+        result.set_shape(image_shape)
+    return result
+
+
+def _random_flip(image, flip_index, seed, scope_name, flip_3D_together=False):
+    """Randomly (50% chance) flip an image along axis `flip_index`.
+
+    Args:
+    image: 4-D Tensor of shape `[batch, height, width, channels]` or 3-D Tensor
+      of shape `[height, width, channels]`.
+    flip_index: Dimension along which to flip the image.
+      Vertical: 0, Horizontal: 1
+    seed: A Python integer. Used to create a random seed. See
+      `tf.compat.v1.set_random_seed` for behavior.
+    scope_name: Name of the scope in which the ops are added.
+
+    Returns:
+    A tensor of the same type and shape as `image`.
+
+    Raises:
+    ValueError: if the shape of `image` not supported.
+    """
+    with ops.name_scope(None, scope_name, [image]) as scope:
+        image = ops.convert_to_tensor(image, name='image')
+        shape = image.get_shape()
+        if shape.ndims == 3 or shape.ndims is None:
+            uniform_random = random_ops.random_uniform([], 0, 1.0, seed=seed)
+            mirror_cond = math_ops.less(uniform_random, .5)
+            result = control_flow_ops.cond(
+                mirror_cond,
+                lambda: array_ops.reverse(image, [flip_index]),
+                lambda: image,
+                name=scope)
+            return fix_image_flip_shape(image, result)
+        elif shape.ndims == 4:
+            batch_size = array_ops.shape(image)[0]
+            if flip_3D_together:
+                uniform_random = array_ops.repeat(random_ops.random_uniform([1], 0, 1.0, seed=seed), batch_size)
+            else:
+                uniform_random = random_ops.random_uniform([batch_size], 0, 1.0, seed=seed)
+            flips = math_ops.round(
+                array_ops.reshape(uniform_random, [batch_size, 1, 1, 1]))
+            flips = math_ops.cast(flips, image.dtype)
+            flipped_input = array_ops.reverse(image, [flip_index + 1])
+            return flips * flipped_input + (1 - flips) * image
+        else:
+            raise ValueError('\'image\' must have either 3 or 4 dimensions.')
+
+
 class Flip_Images(Image_Processor):
-    def __init__(self, flip_lr=True, flip_up_down=True):
+    def __init__(self, keys=['image','annotation'], flip_lr=True, flip_up_down=True, flip_z=False, flip_3D_together=False):
         self.flip_lr = flip_lr
+        self.flip_z = flip_z
         self.flip_up_down = flip_up_down
+        self.keys = keys
+        self.flip_3D_together = flip_3D_together
 
     def parse(self, image_features, *args, **kwargs):
-        if self.flip_lr:
-            if tf.random.uniform(shape=[], minval=0, maxval=2, dtype='int32') == tf.constant(1,dtype='int32'):
-                print('flipped lr')
-                image_features['image'] = tf.image.flip_left_right(image_features['image'])
-                image_features['annotation'] = tf.image.flip_left_right(image_features['annotation'])
-        if self.flip_up_down:
-            if tf.random.uniform(shape=[], minval=0, maxval=2, dtype='int32') == tf.constant(1, dtype='int32'):
-                print('flipped ud')
-                image_features['image'] = tf.image.flip_up_down(image_features['image'])
-                image_features['annotation'] = tf.image.flip_up_down(image_features['annotation'])
+        for key in self.keys:
+            assert key in image_features.keys(), 'You need to pass correct keys in dictionary!'
+            image = image_features[key]
+            if self.flip_lr:
+                image = _random_flip(image, 1, None, 'random_flip_left_right', flip_3D_together=self.flip_3D_together)
+            if self.flip_up_down:
+                image = _random_flip(image, 0, None, 'random_flip_up_down', flip_3D_together=self.flip_3D_together)
+            if self.flip_z:
+                uniform_random = random_ops.random_uniform([], 0, 1.0, seed=None)
+                mirror_cond = math_ops.less(uniform_random, .5)
+                result = control_flow_ops.cond(
+                    mirror_cond,
+                    lambda: array_ops.reverse(image, [0]),
+                    lambda: image)
+                image = fix_image_flip_shape(image, result)
+            image_features[key] = image
         return image_features
 
 
