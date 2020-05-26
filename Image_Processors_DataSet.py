@@ -1,6 +1,7 @@
 __author__ = 'Brian M Anderson'
 # Created on 4/8/2020
 import tensorflow as tf
+import tensorflow_addons as tfa
 import numpy as np
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
@@ -33,16 +34,28 @@ class Decode_Images_Annotations(Image_Processor):
                                                      (image_features['z_images'], image_features['rows'],
                                                       image_features['cols']))
             if 'annotation' in image_features:
-                image_features['annotation'] = tf.reshape(tf.io.decode_raw(image_features['annotation'],
-                                                                           out_type=annotation_dtype),
-                                                          (image_features['z_images'], image_features['rows'],
-                                                           image_features['cols']))
+                if 'num_classes' in image_features:
+                    image_features['annotation'] = tf.reshape(tf.io.decode_raw(image_features['annotation'],
+                                                                               out_type=annotation_dtype),
+                                                              (image_features['z_images'], image_features['rows'],
+                                                               image_features['cols'], image_features['num_classes']))
+                else:
+                    image_features['annotation'] = tf.reshape(tf.io.decode_raw(image_features['annotation'],
+                                                                               out_type=annotation_dtype),
+                                                              (image_features['z_images'], image_features['rows'],
+                                                               image_features['cols']))
         else:
             image_features['image'] = tf.reshape(tf.io.decode_raw(image_features['image'], out_type=image_dtype),
                                                  (image_features['rows'], image_features['cols']))
-            image_features['annotation'] = tf.reshape(tf.io.decode_raw(image_features['annotation'],
-                                                                       out_type=annotation_dtype),
-                                                      (image_features['rows'], image_features['cols']))
+            if 'num_classes' in image_features:
+                image_features['annotation'] = tf.reshape(tf.io.decode_raw(image_features['annotation'],
+                                                                           out_type=annotation_dtype),
+                                                          (image_features['rows'], image_features['cols'],
+                                                           image_features['num_classes']))
+            else:
+                image_features['annotation'] = tf.reshape(tf.io.decode_raw(image_features['annotation'],
+                                                                           out_type=annotation_dtype),
+                                                          (image_features['rows'], image_features['cols']))
         if 'spacing' in image_features:
             spacing = tf.io.decode_raw(image_features['spacing'], out_type='float32')
             image_features['spacing'] = spacing
@@ -87,6 +100,49 @@ class Combine_image_RT_Dose(Image_Processor):
         output = tf.concat([image,rt,dose],axis=-1)
         input_features['combined'] = output
         return input_features
+
+from tensorflow.keras.utils import to_categorical
+class Fuzzy_Segment_Liver_Lobes(Image_Processor):
+    def __init__(self, min_val=0, max_val=None, num_classes=9):
+        '''
+        :param variation: margin to expand region, mm. np.arange(start=0, stop=1, step=1), in mm
+        '''
+        self.min_val = min_val
+        self.max_val = max_val
+        self.num_classes = num_classes
+    
+    def parse(self, image_features, *args, **kwargs):
+        if type(image_features) is dict:
+            annotation = image_features['annotation']
+        else:
+            annotation = image_features[-1][-1]
+        annotation = to_categorical(annotation,9)
+        image_features['annotation'] = annotation
+        return image_features
+        size = tf.random.uniform([2],minval=self.min_val, maxval=self.max_val)
+        filter_shape = tuple(tf.cast(tf.divide(size,image_features['spacing'][:2]), dtype=tf.dtypes.float32))
+
+        # Explicitly pad the image
+
+        filter_height, filter_width = filter_shape
+        pad_top = (filter_height - 1) // 2
+        pad_bottom = filter_height - 1 - pad_top
+        pad_left = (filter_width - 1) // 2
+        pad_right = filter_width - 1 - pad_left
+        paddings = [[0, 0], [pad_top, pad_bottom], [pad_left, pad_right], [0, 0]]
+        annotation = tf.pad(annotation, paddings, mode='CONSTANT')
+
+        # Filter of shape (filter_width, filter_height, in_channels, 1)
+        # has the value of 1 for each element.
+        area = tf.math.reduce_prod(filter_shape)
+        filter_shape += (tf.shape(annotation)[-1], 1)
+        kernel = tf.ones(shape=filter_shape, dtype=annotation.dtype)
+
+        annotation = tf.nn.depthwise_conv2d(annotation, kernel, strides=(1, 1, 1, 1), padding="VALID")
+        annotation = tf.divide(annotation, area)
+        annotation = tf.divide(annotation, tf.expand_dims(tf.reduce_sum(annotation, axis=-1),axis=-1))
+        image_features['annotation'] = annotation
+        return image_features
 
 
 class Return_Outputs(Image_Processor):
@@ -145,17 +201,16 @@ class Ensure_Image_Proportions(Image_Processor):
 
 
 class Return_Add_Mult_Disease(Image_Processor):
+    def __init__(self, on_disease=True):
+        self.on_disease = on_disease
+
     def parse(self, image_features, *args, **kwargs):
         annotation = image_features['annotation']
         mask = tf.where(annotation > 0, 1, 0)
-        annotation = tf.where(annotation == 2, 1, 0)
-        image_features['annotation'] = annotation
+        if self.on_disease:
+            annotation = tf.where(annotation == 2, 1, 0)
+            image_features['annotation'] = annotation
         image_features['mask'] = mask
-        # sum_vals_base = tf.where(annotation > 0, 0, 1)
-        # zeros = tf.where(annotation > 0, 0, 0)
-        # mask = tf.repeat(mask,2,axis=-1)
-        # sum_vals = tf.concat([sum_vals_base, zeros], axis=-1)
-        # image_features['sum_vals'] = sum_vals
         return image_features
 
 

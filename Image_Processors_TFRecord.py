@@ -3,11 +3,31 @@ __author__ = 'Brian M Anderson'
 import SimpleITK as sitk
 import numpy as np
 from _collections import OrderedDict
+from .Resample_Class.Resample_Class import Resample_Class_Object
 from .Plot_And_Scroll_Images.Plot_Scroll_Images import plot_scroll_Image, plt
 
 
-def get_start_stop(annotation, extension=np.inf):
-    non_zero_values = np.where(np.max(annotation,axis=(1,2)) > 0)[0]
+def to_categorical(y, num_classes=None, dtype='float32'):
+    """Converts a class vector (integers) to binary class matrix.
+    Taken from tf.keras.utils.to_categorical
+    """
+    y = np.array(y, dtype='int')
+    input_shape = y.shape
+    if input_shape and input_shape[-1] == 1 and len(input_shape) > 1:
+        input_shape = tuple(input_shape[:-1])
+    y = y.ravel()
+    if not num_classes:
+        num_classes = np.max(y) + 1
+    n = y.shape[0]
+    categorical = np.zeros((n, num_classes), dtype=dtype)
+    categorical[np.arange(n), y] = 1
+    output_shape = input_shape + (num_classes,)
+    categorical = np.reshape(categorical, output_shape)
+    return categorical
+
+
+def get_start_stop(annotation, extension=np.inf, desired_val=1):
+    non_zero_values = np.where(np.max(annotation,axis=(1,2)) >= desired_val)[0]
     start, stop = -1, -1
     if non_zero_values.any():
         start = int(non_zero_values[0])
@@ -30,6 +50,52 @@ def get_bounding_boxes(annotation_handle,value):
 
 class Image_Processor(object):
     def parse(self, input_features):
+        return input_features
+
+
+class To_Categorical(Image_Processor):
+    def __init__(self, num_classes=9):
+        self.num_classes = num_classes
+
+    def parse(self, input_features):
+        annotation = input_features['annotation']
+        input_features['annotation'] = to_categorical(annotation,self.num_classes)
+        input_features['num_classes'] = self.num_classes
+        return input_features
+
+
+class Resampler(Image_Processor):
+    def __init__(self, desired_output_spacing=(None,None,None), make_512=False):
+        self.desired_output_spacing = desired_output_spacing
+        self.make_512 = make_512
+
+    def parse(self, input_features):
+        input_spacing = tuple([float(i) for i in input_features['spacing']])
+        image_handle = sitk.GetImageFromArray(input_features['image'])
+        image_handle.SetSpacing(input_spacing)
+        annotation_handle = sitk.GetImageFromArray(input_features['annotation'])
+        annotation_handle.SetSpacing(input_spacing)
+        output_spacing = []
+        for index in range(3):
+            if self.desired_output_spacing[index] is None:
+                if input_spacing[index] < 0.5 and self.make_512:
+                    spacing = input_spacing[index] * 2
+                else:
+                    spacing = input_spacing[index]
+                output_spacing.append(spacing)
+            else:
+                output_spacing.append(self.desired_output_spacing[index])
+        output_spacing = tuple(output_spacing)
+        if output_spacing != input_spacing:
+            resampler = Resample_Class_Object()
+            print('Resampling {} to {}'.format(input_spacing,output_spacing))
+            image_handle = resampler.resample_image(input_image=image_handle,input_spacing=input_spacing,
+                                                         output_spacing=output_spacing,is_annotation=False)
+            annotation_handle = resampler.resample_image(input_image=annotation_handle,input_spacing=input_spacing,
+                                                              output_spacing=output_spacing,is_annotation=True)
+            input_features['image'] = sitk.GetArrayFromImage(image_handle)
+            input_features['annotation'] = sitk.GetArrayFromImage(annotation_handle)
+            input_features['spacing'] = np.asarray(annotation_handle.GetSpacing(), dtype='float32')
         return input_features
 
 
@@ -84,6 +150,41 @@ class Clip_Images_By_Extension(Image_Processor):
         input_features['image'] = image
         input_features['annotation'] = annotation.astype('int8')
         return input_features
+
+
+class Normalize_MRI(Image_Processor):
+    def parse(self, input_features):
+        image_handle = sitk.GetImageFromArray(input_features['image'])
+        image = input_features['image']
+
+        normalizationFilter = sitk.IntensityWindowingImageFilter()
+        upperPerc = np.percentile(image, 99)
+        lowerPerc = np.percentile(image,1)
+
+        normalizationFilter.SetOutputMaximum(255.0)
+        normalizationFilter.SetOutputMinimum(0.0)
+        normalizationFilter.SetWindowMaximum(upperPerc)
+        normalizationFilter.SetWindowMinimum(lowerPerc)
+
+        normalizedImage = normalizationFilter.Execute(image_handle)
+
+        image = sitk.GetArrayFromImage(normalizedImage)
+        input_features['image'] = image
+        return input_features
+
+
+class N4BiasCorrection(Image_Processor):
+    def parse(self, input_features):
+        image_handle = sitk.GetImageFromArray(input_features['image'])
+        corrector = sitk.N4BiasFieldCorrectionImageFilter()
+        corrector.SetMaximumNumberOfIterations([int(2)*2])
+        try:
+            N4_normalized_image = corrector.Execute(image_handle)
+        except RuntimeError:
+            N4_normalized_image = corrector.Execute(image_handle)
+        input_features['image'] = sitk.GetArrayFromImage(N4_normalized_image)
+        return input_features
+
 
 
 class Split_Disease_Into_Cubes(Image_Processor):
@@ -148,11 +249,14 @@ class Split_Disease_Into_Cubes(Image_Processor):
 
 
 class Distribute_into_3D(Image_Processor):
-    def __init__(self, min_z=0, max_z=np.inf, max_rows=np.inf, max_cols=np.inf, mirror_small_bits=True):
+    def __init__(self, min_z=0, max_z=np.inf, max_rows=np.inf, max_cols=np.inf, mirror_small_bits=True,
+                 chop_ends=False, desired_val=1):
         self.max_z = max_z
         self.min_z = min_z
         self.max_rows, self.max_cols = max_rows, max_cols
         self.mirror_small_bits = mirror_small_bits
+        self.chop_ends = chop_ends
+        self.desired_val = desired_val
 
     def parse(self, input_features):
         out_features = OrderedDict()
@@ -174,6 +278,7 @@ class Distribute_into_3D(Image_Processor):
                 continue
             image = image_base[start_chop:start_chop + step, ...]
             annotation = annotation_base[start_chop:start_chop + step, ...]
+            start_chop += step
             if image.shape[0] < max([step, self.min_z]):
                 if self.mirror_small_bits:
                     while image.shape[0] < max([step, self.min_z]):
@@ -183,7 +288,11 @@ class Distribute_into_3D(Image_Processor):
                         annotation = np.concatenate([annotation, mirror_annotation], axis=0)
                     image = image[:max([step, self.min_z])]
                     annotation = annotation[:max([step, self.min_z])]
-            start, stop = get_start_stop(annotation, extension=0)
+                elif self.chop_ends:
+                    continue
+            start, stop = get_start_stop(annotation, extension=0, desired_val=self.desired_val)
+            if start == -1 or stop == -1:
+                continue # no annotation here
             image_features['image_path'] = image_path
             image_features['image'] = image
             image_features['annotation'] = annotation.astype('int8')
@@ -197,7 +306,6 @@ class Distribute_into_3D(Image_Processor):
                 if key not in image_features.keys():
                     image_features[key] = input_features[key] # Pass along all other keys.. be careful
             out_features['Image_{}'.format(index)] = image_features
-            start_chop += step
         return out_features
 
 
@@ -222,13 +330,32 @@ class Distribute_into_2D(Image_Processor):
         return out_features
 
 
+class NormalizeParotidMR(Image_Processor):
+    def parse(self, input_features):
+        images = input_features['image']
+        data = images.flatten()
+        counts, bins = np.histogram(data, bins=1000)
+        count_index = 0
+        count_value = 0
+        while count_value/np.sum(counts) < .3: # Throw out the bottom 30 percent of data, as that is usually just 0s
+            count_value += counts[count_index]
+            count_index += 1
+        min_bin = bins[count_index]
+        data = data[data>min_bin]
+        mean_val, std_val = np.mean(data), np.std(data)
+        images = (images - mean_val)/std_val
+        input_features['image'] = images
+        return input_features
+
+
 class Normalize_to_annotation(Image_Processor):
-    def __init__(self, annotation_value_list=None):
+    def __init__(self, annotation_value_list=None, mirror_max=False):
         '''
         :param annotation_value: mask values to normalize over, [1]
         '''
         assert annotation_value_list is not None, 'Need to provide a list of values'
         self.annotation_value_list = annotation_value_list
+        self.mirror_max = mirror_max
 
     def parse(self, input_features):
         images = input_features['image']
@@ -253,6 +380,8 @@ class Normalize_to_annotation(Image_Processor):
         min_50 = np.where(half_lower == np.min(half_lower))[0][0]
 
         min_values = bins[count_index - min_50]
+        if self.mirror_max:
+            min_values = bins[count_index - max_50]  # Good for non-normal distributions, just mirror the other FWHM
         max_values = bins[count_index + max_50]
         data = data[np.where((data >= min_values) & (data <= max_values))]
         mean_val, std_val = np.mean(data), np.std(data)
@@ -308,6 +437,13 @@ class Box_Images(Image_Processor):
             remainder_z, remainder_r, remainder_c = self.power_val_z - z_total % self.power_val_z if z_total % self.power_val_z != 0 else 0, \
                                                     self.power_val_r - r_total % self.power_val_r if r_total % self.power_val_r != 0 else 0, \
                                                     self.power_val_c - c_total % self.power_val_c if c_total % self.power_val_c != 0 else 0
+            remainders = np.asarray([remainder_z, remainder_r, remainder_c])
+            z_start, z_stop, r_start, r_stop, c_start, c_stop = expand_box_indexes(z_start, z_stop, r_start, r_stop,
+                                                                                   c_start, c_stop,
+                                                                                   annotation_shape=
+                                                                                   annotation.shape,
+                                                                                   bounding_box_expansion=
+                                                                                   remainders // 2 + 1)
             min_images, min_rows, min_cols = z_total + remainder_z, r_total + remainder_r, c_total + remainder_c
             if self.min_images is not None:
                 min_images = max([min_images, self.min_images])
