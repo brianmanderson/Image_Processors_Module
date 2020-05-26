@@ -64,8 +64,9 @@ class To_Categorical(Image_Processor):
 
 
 class Resampler(Image_Processor):
-    def __init__(self, desired_output_spacing=(None,None,None)):
+    def __init__(self, desired_output_spacing=(None,None,None), make_512=False):
         self.desired_output_spacing = desired_output_spacing
+        self.make_512 = make_512
 
     def parse(self, input_features):
         input_spacing = tuple([float(i) for i in input_features['spacing']])
@@ -76,7 +77,11 @@ class Resampler(Image_Processor):
         output_spacing = []
         for index in range(3):
             if self.desired_output_spacing[index] is None:
-                output_spacing.append(input_spacing[index])
+                if input_spacing[index] < 0.5 and self.make_512:
+                    spacing = input_spacing[index] * 2
+                else:
+                    spacing = input_spacing[index]
+                output_spacing.append(spacing)
             else:
                 output_spacing.append(self.desired_output_spacing[index])
         output_spacing = tuple(output_spacing)
