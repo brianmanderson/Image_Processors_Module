@@ -403,10 +403,10 @@ class Threshold_Images(Image_Processor):
         self.upper = tf.constant(upper_bound, dtype='float32')
 
     def parse(self, image_features, *args, **kwargs):
-        self.lower = tf.cast(self.lower,dtype=image_features['image'].dtype)
-        self.upper = tf.cast(self.upper, dtype=image_features['image'].dtype)
-        image_features['image'] = tf.where(image_features['image'] > self.upper, self.upper, image_features['image'])
-        image_features['image'] = tf.where(image_features['image'] < self.lower, self.lower, image_features['image'])
+        image_features['image'] = tf.where(image_features['image'] > tf.cast(self.upper, dtype=image_features['image'].dtype),
+                                           tf.cast(self.upper, dtype=image_features['image'].dtype), image_features['image'])
+        image_features['image'] = tf.where(image_features['image'] < tf.cast(self.lower,dtype=image_features['image'].dtype),
+                                           tf.cast(self.lower,dtype=image_features['image'].dtype), image_features['image'])
         return image_features
 
 
