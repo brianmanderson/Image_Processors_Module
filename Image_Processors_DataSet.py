@@ -1,7 +1,6 @@
 __author__ = 'Brian M Anderson'
 # Created on 4/8/2020
 import tensorflow as tf
-import tensorflow_addons as tfa
 import numpy as np
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
