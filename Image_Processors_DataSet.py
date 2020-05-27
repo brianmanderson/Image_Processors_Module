@@ -200,8 +200,9 @@ class Ensure_Image_Proportions(Image_Processor):
 
 
 class Return_Add_Mult_Disease(Image_Processor):
-    def __init__(self, on_disease=True):
+    def __init__(self, on_disease=True, change_background=False):
         self.on_disease = on_disease
+        self.change_background = change_background
 
     def parse(self, image_features, *args, **kwargs):
         annotation = image_features['annotation']
@@ -210,6 +211,8 @@ class Return_Add_Mult_Disease(Image_Processor):
             annotation = tf.where(annotation == 2, 1, 0)
             image_features['annotation'] = annotation
         image_features['mask'] = mask
+        if self.change_background:
+            image_features['image'] = tf.where(mask == 0, tf.cast(0, dtype=image_features['image'].dtype), image_features['image'])
         return image_features
 
 
