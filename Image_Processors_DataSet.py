@@ -384,7 +384,7 @@ class Flip_Images(Image_Processor):
                 image = image_features[key]
                 shape = image.get_shape()
                 if shape.ndims != 3 and shape.ndims is not None:
-                    flip_index += 1
+                    flip_index = 2
                 if uniform_random is None:
                     uniform_random = random_ops.random_uniform([], 0, 1.0, seed=None)
                 mirror_cond = math_ops.less(uniform_random, .5)
@@ -401,7 +401,7 @@ class Flip_Images(Image_Processor):
                 image = image_features[key]
                 shape = image.get_shape()
                 if shape.ndims != 3 and shape.ndims is not None:
-                    flip_index += 1
+                    flip_index = 1
                 if uniform_random is None:
                     uniform_random = random_ops.random_uniform([], 0, 1.0, seed=None)
                 mirror_cond = math_ops.less(uniform_random, .5)
@@ -422,8 +422,7 @@ class Flip_Images(Image_Processor):
                     mirror_cond,
                     lambda: array_ops.reverse(image, [0]),
                     lambda: image)
-                image = fix_image_flip_shape(image, result)
-                image_features[key] = image
+                image_features[key] = fix_image_flip_shape(image, result)
         return image_features
 
 
