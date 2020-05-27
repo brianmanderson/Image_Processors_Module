@@ -376,22 +376,54 @@ class Flip_Images(Image_Processor):
         self.flip_3D_together = flip_3D_together
 
     def parse(self, image_features, *args, **kwargs):
-        for key in self.keys:
-            assert key in image_features.keys(), 'You need to pass correct keys in dictionary!'
-            image = image_features[key]
-            if self.flip_lr:
-                image = _random_flip(image, 1, None, 'random_flip_left_right', flip_3D_together=self.flip_3D_together)
-            if self.flip_up_down:
-                image = _random_flip(image, 0, None, 'random_flip_up_down', flip_3D_together=self.flip_3D_together)
-            if self.flip_z:
-                uniform_random = random_ops.random_uniform([], 0, 1.0, seed=None)
+        if self.flip_lr:
+            uniform_random = None
+            flip_index = 1
+            for key in self.keys:
+                assert key in image_features.keys(), 'You need to pass correct keys in dictionary!'
+                image = image_features[key]
+                shape = image.get_shape()
+                if shape.ndims != 3 and shape.ndims is not None:
+                    flip_index += 1
+                if uniform_random is None:
+                    uniform_random = random_ops.random_uniform([], 0, 1.0, seed=None)
+                mirror_cond = math_ops.less(uniform_random, .5)
+                result = control_flow_ops.cond(
+                    mirror_cond,
+                    lambda: array_ops.reverse(image, [flip_index]),
+                    lambda: image)
+                image_features[key] = fix_image_flip_shape(image, result)
+        if self.flip_up_down:
+            uniform_random = None
+            flip_index = 0
+            for key in self.keys:
+                assert key in image_features.keys(), 'You need to pass correct keys in dictionary!'
+                image = image_features[key]
+                shape = image.get_shape()
+                if shape.ndims != 3 and shape.ndims is not None:
+                    flip_index += 1
+                if uniform_random is None:
+                    uniform_random = random_ops.random_uniform([], 0, 1.0, seed=None)
+                mirror_cond = math_ops.less(uniform_random, .5)
+                result = control_flow_ops.cond(
+                    mirror_cond,
+                    lambda: array_ops.reverse(image, [flip_index]),
+                    lambda: image)
+                image_features[key] = fix_image_flip_shape(image, result)
+        if self.flip_z:
+            uniform_random = None
+            for key in self.keys:
+                assert key in image_features.keys(), 'You need to pass correct keys in dictionary!'
+                image = image_features[key]
+                if uniform_random is None:
+                    uniform_random = random_ops.random_uniform([], 0, 1.0, seed=None)
                 mirror_cond = math_ops.less(uniform_random, .5)
                 result = control_flow_ops.cond(
                     mirror_cond,
                     lambda: array_ops.reverse(image, [0]),
                     lambda: image)
                 image = fix_image_flip_shape(image, result)
-            image_features[key] = image
+                image_features[key] = image
         return image_features
 
 
