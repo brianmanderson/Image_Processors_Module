@@ -170,6 +170,19 @@ class Return_Outputs(Image_Processor):
         del image_features
         return tuple(inputs), tuple(outputs)
 
+class Resample_Image(Image_Processor):
+    def __init__(self, image_rows=512, image_cols=512):
+        self.image_rows = tf.constant(image_rows)
+        self.image_cols = tf.constant(image_cols)
+
+    def parse(self, image_features, *args, **kwargs):
+        assert len(image_features['image'].shape) > 2, 'You should do an expand_dimensions before this!'
+        image_features['image'] = tf.image.resize(image_features['image'], size=(self.image_rows, self.image_cols),
+                                                  method='bilinear', preserve_aspect_ratio=True)
+        image_features['annotation'] = tf.image.resize(image_features['annotation'], size=(self.image_rows, self.image_cols),
+                                                       method='nearest', preserve_aspect_ratio=True)
+        return image_features
+
 
 class Pad_Z_Images_w_Reflections(Image_Processor):
     '''
