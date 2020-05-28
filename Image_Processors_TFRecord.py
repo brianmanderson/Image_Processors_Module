@@ -349,13 +349,15 @@ class NormalizeParotidMR(Image_Processor):
 
 
 class Normalize_to_annotation(Image_Processor):
-    def __init__(self, annotation_value_list=None, mirror_max=False):
+    def __init__(self, annotation_value_list=None, mirror_max=False, lower_percentile=None, upper_percentile=None):
         '''
         :param annotation_value: mask values to normalize over, [1]
         '''
         assert annotation_value_list is not None, 'Need to provide a list of values'
         self.annotation_value_list = annotation_value_list
         self.mirror_max = mirror_max
+        self.lower_percentile = lower_percentile
+        self.upper_percentile = upper_percentile
 
     def parse(self, input_features):
         images = input_features['image']
@@ -364,6 +366,14 @@ class Normalize_to_annotation(Image_Processor):
         for value in self.annotation_value_list:
             mask += annotation == value
         data = images[mask > 0].flatten()
+        if self.lower_percentile is not None and self.upper_percentile is not None:
+            lower_bound = np.percentile(data,25)
+            upper_bound = np.percentile(data,75)
+            data = data[np.where((data >= lower_bound) & (data <= upper_bound))]
+            mean_val, std_val = np.mean(data), np.std(data)
+            images = (images - mean_val) / std_val
+            input_features['image'] = images
+            return input_features
         counts, bins = np.histogram(data, bins=100)
         bins = bins[:-1]
         count_index = np.where(counts == np.max(counts))[0][-1]
