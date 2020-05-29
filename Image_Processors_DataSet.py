@@ -453,6 +453,7 @@ class Threshold_Images(Image_Processor):
                                            tf.cast(self.upper, dtype=image_features['image'].dtype), image_features['image'])
         image_features['image'] = tf.where(image_features['image'] < tf.cast(self.lower,dtype=image_features['image'].dtype),
                                            tf.cast(self.lower,dtype=image_features['image'].dtype), image_features['image'])
+        image_features['image'] = tf.divide(image_features['image'],tf.cast(tf.subtract(self.upper,self.lower),dtype=image_features['image'].dtype))
         return image_features
 
 
