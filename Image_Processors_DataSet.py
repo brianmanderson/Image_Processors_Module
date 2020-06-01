@@ -1,8 +1,13 @@
 __author__ = 'Brian M Anderson'
 # Created on 4/8/2020
 import tensorflow as tf
-import tensorflow_addons as tfa
 import numpy as np
+from tensorflow.python.framework import tensor_shape
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import random_ops
+from tensorflow.python.framework import ops
 from .Plot_And_Scroll_Images.Plot_Scroll_Images import plot_scroll_Image, plt
 
 
@@ -28,16 +33,28 @@ class Decode_Images_Annotations(Image_Processor):
                                                      (image_features['z_images'], image_features['rows'],
                                                       image_features['cols']))
             if 'annotation' in image_features:
-                image_features['annotation'] = tf.reshape(tf.io.decode_raw(image_features['annotation'],
-                                                                           out_type=annotation_dtype),
-                                                          (image_features['z_images'], image_features['rows'],
-                                                           image_features['cols']))
+                if 'num_classes' in image_features:
+                    image_features['annotation'] = tf.reshape(tf.io.decode_raw(image_features['annotation'],
+                                                                               out_type=annotation_dtype),
+                                                              (image_features['z_images'], image_features['rows'],
+                                                               image_features['cols'], image_features['num_classes']))
+                else:
+                    image_features['annotation'] = tf.reshape(tf.io.decode_raw(image_features['annotation'],
+                                                                               out_type=annotation_dtype),
+                                                              (image_features['z_images'], image_features['rows'],
+                                                               image_features['cols']))
         else:
             image_features['image'] = tf.reshape(tf.io.decode_raw(image_features['image'], out_type=image_dtype),
                                                  (image_features['rows'], image_features['cols']))
-            image_features['annotation'] = tf.reshape(tf.io.decode_raw(image_features['annotation'],
-                                                                       out_type=annotation_dtype),
-                                                      (image_features['rows'], image_features['cols']))
+            if 'num_classes' in image_features:
+                image_features['annotation'] = tf.reshape(tf.io.decode_raw(image_features['annotation'],
+                                                                           out_type=annotation_dtype),
+                                                          (image_features['rows'], image_features['cols'],
+                                                           image_features['num_classes']))
+            else:
+                image_features['annotation'] = tf.reshape(tf.io.decode_raw(image_features['annotation'],
+                                                                           out_type=annotation_dtype),
+                                                          (image_features['rows'], image_features['cols']))
         if 'spacing' in image_features:
             spacing = tf.io.decode_raw(image_features['spacing'], out_type='float32')
             image_features['spacing'] = spacing
@@ -98,11 +115,9 @@ class Fuzzy_Segment_Liver_Lobes(Image_Processor):
             annotation = image_features['annotation']
         else:
             annotation = image_features[-1][-1]
-        annotation = to_categorical(annotation,9)
-        image_features['annotation'] = annotation
-        return image_features
-        size = tf.random.uniform([2],minval=self.min_val, maxval=self.max_val)
-        filter_shape = tuple(tf.cast(tf.divide(size,image_features['spacing'][:2]), dtype=tf.dtypes.float32))
+        annotation = tf.cast(annotation,dtype=tf.dtypes.float32)
+        filter_size = tf.random.uniform([2],minval=self.min_val, maxval=self.max_val)
+        filter_shape = tuple(tf.cast(tf.divide(filter_size,image_features['spacing'][:2]), dtype=tf.dtypes.float32))
 
         # Explicitly pad the image
 
@@ -118,7 +133,7 @@ class Fuzzy_Segment_Liver_Lobes(Image_Processor):
         # has the value of 1 for each element.
         area = tf.math.reduce_prod(filter_shape)
         filter_shape += (tf.shape(annotation)[-1], 1)
-        kernel = tf.ones(shape=filter_shape, dtype=annotation.dtype)
+        kernel = tf.ones(shape=filter_shape, dtype='float32')
 
         annotation = tf.nn.depthwise_conv2d(annotation, kernel, strides=(1, 1, 1, 1), padding="VALID")
         annotation = tf.divide(annotation, area)
@@ -153,6 +168,19 @@ class Return_Outputs(Image_Processor):
         del image_features
         return tuple(inputs), tuple(outputs)
 
+class Resample_Image(Image_Processor):
+    def __init__(self, image_rows=512, image_cols=512):
+        self.image_rows = tf.constant(image_rows)
+        self.image_cols = tf.constant(image_cols)
+
+    def parse(self, image_features, *args, **kwargs):
+        assert len(image_features['image'].shape) > 2, 'You should do an expand_dimensions before this!'
+        image_features['image'] = tf.image.resize(image_features['image'], size=(self.image_rows, self.image_cols),
+                                                  method='bilinear', preserve_aspect_ratio=True)
+        image_features['annotation'] = tf.image.resize(image_features['annotation'], size=(self.image_rows, self.image_cols),
+                                                       method='nearest', preserve_aspect_ratio=True)
+        return image_features
+
 
 class Pad_Z_Images_w_Reflections(Image_Processor):
     '''
@@ -183,16 +211,22 @@ class Ensure_Image_Proportions(Image_Processor):
 
 
 class Return_Add_Mult_Disease(Image_Processor):
-    def __init__(self, on_disease=True):
+    def __init__(self, on_disease=True, change_background=False):
         self.on_disease = on_disease
+        self.change_background = change_background
 
     def parse(self, image_features, *args, **kwargs):
         annotation = image_features['annotation']
-        mask = tf.where(annotation > 0, 1, 0)
+        if annotation.shape[-1] != 1:
+            mask = tf.where(annotation[...,0] < 1, 1, 0)
+        else:
+            mask = tf.where(annotation > 0, 1, 0)
         if self.on_disease:
             annotation = tf.where(annotation == 2, 1, 0)
             image_features['annotation'] = annotation
         image_features['mask'] = mask
+        if self.change_background:
+            image_features['image'] = tf.where(mask == 0, tf.cast(0, dtype=image_features['image'].dtype), image_features['image'])
         return image_features
 
 
@@ -284,22 +318,125 @@ class Cast_Data(Image_Processor):
         return image_features
 
 
+def fix_image_flip_shape(image, result):
+    """Set the shape to 3 dimensional if we don't know anything else.
+
+    Args:
+    image: original image size
+    result: flipped or transformed image
+
+    Returns:
+    An image whose shape is at least (None, None, None).
+    """
+    image_shape = image.get_shape()
+    if image_shape == tensor_shape.unknown_shape():
+        result.set_shape([None, None, None])
+    else:
+        result.set_shape(image_shape)
+    return result
+
+
+def _random_flip(image, flip_index, seed, scope_name, flip_3D_together=False):
+    """Randomly (50% chance) flip an image along axis `flip_index`.
+
+    Args:
+    image: 4-D Tensor of shape `[batch, height, width, channels]` or 3-D Tensor
+      of shape `[height, width, channels]`.
+    flip_index: Dimension along which to flip the image.
+      Vertical: 0, Horizontal: 1
+    seed: A Python integer. Used to create a random seed. See
+      `tf.compat.v1.set_random_seed` for behavior.
+    scope_name: Name of the scope in which the ops are added.
+
+    Returns:
+    A tensor of the same type and shape as `image`.
+
+    Raises:
+    ValueError: if the shape of `image` not supported.
+    """
+    with ops.name_scope(None, scope_name, [image]) as scope:
+        image = ops.convert_to_tensor(image, name='image')
+        shape = image.get_shape()
+        if shape.ndims == 3 or shape.ndims is None:
+            uniform_random = random_ops.random_uniform([], 0, 1.0, seed=seed)
+            mirror_cond = math_ops.less(uniform_random, .5)
+            result = control_flow_ops.cond(
+                mirror_cond,
+                lambda: array_ops.reverse(image, [flip_index]),
+                lambda: image,
+                name=scope)
+            return fix_image_flip_shape(image, result)
+        elif shape.ndims == 4:
+            batch_size = array_ops.shape(image)[0]
+            if flip_3D_together:
+                uniform_random = array_ops.repeat(random_ops.random_uniform([1], 0, 1.0, seed=seed), batch_size)
+            else:
+                uniform_random = random_ops.random_uniform([batch_size], 0, 1.0, seed=seed)
+            flips = math_ops.round(
+                array_ops.reshape(uniform_random, [batch_size, 1, 1, 1]))
+            flips = math_ops.cast(flips, image.dtype)
+            flipped_input = array_ops.reverse(image, [flip_index + 1])
+            return flips * flipped_input + (1 - flips) * image
+        else:
+            raise ValueError('\'image\' must have either 3 or 4 dimensions.')
+
+
 class Flip_Images(Image_Processor):
-    def __init__(self, flip_lr=True, flip_up_down=True):
+    def __init__(self, keys=['image','annotation'], flip_lr=True, flip_up_down=True, flip_z=False, flip_3D_together=False):
         self.flip_lr = flip_lr
+        self.flip_z = flip_z
         self.flip_up_down = flip_up_down
+        self.keys = keys
+        self.flip_3D_together = flip_3D_together
 
     def parse(self, image_features, *args, **kwargs):
         if self.flip_lr:
-            if tf.random.uniform(shape=[], minval=0, maxval=2, dtype='int32') == tf.constant(1,dtype='int32'):
-                print('flipped lr')
-                image_features['image'] = tf.image.flip_left_right(image_features['image'])
-                image_features['annotation'] = tf.image.flip_left_right(image_features['annotation'])
+            uniform_random = None
+            flip_index = 1
+            for key in self.keys:
+                assert key in image_features.keys(), 'You need to pass correct keys in dictionary!'
+                image = image_features[key]
+                shape = image.get_shape()
+                if shape.ndims != 3 and shape.ndims is not None:
+                    flip_index = 2
+                if uniform_random is None:
+                    uniform_random = random_ops.random_uniform([], 0, 1.0, seed=None)
+                mirror_cond = math_ops.less(uniform_random, .5)
+                result = control_flow_ops.cond(
+                    mirror_cond,
+                    lambda: array_ops.reverse(image, [flip_index]),
+                    lambda: image)
+                image_features[key] = fix_image_flip_shape(image, result)
         if self.flip_up_down:
-            if tf.random.uniform(shape=[], minval=0, maxval=2, dtype='int32') == tf.constant(1, dtype='int32'):
-                print('flipped ud')
-                image_features['image'] = tf.image.flip_up_down(image_features['image'])
-                image_features['annotation'] = tf.image.flip_up_down(image_features['annotation'])
+            uniform_random = None
+            flip_index = 0
+            for key in self.keys:
+                assert key in image_features.keys(), 'You need to pass correct keys in dictionary!'
+                image = image_features[key]
+                shape = image.get_shape()
+                if shape.ndims != 3 and shape.ndims is not None:
+                    flip_index = 1
+                if uniform_random is None:
+                    uniform_random = random_ops.random_uniform([], 0, 1.0, seed=None)
+                mirror_cond = math_ops.less(uniform_random, .5)
+                result = control_flow_ops.cond(
+                    mirror_cond,
+                    lambda: array_ops.reverse(image, [flip_index]),
+                    lambda: image)
+                image_features[key] = fix_image_flip_shape(image, result)
+        if self.flip_z:
+            uniform_random = None
+            for key in self.keys:
+                assert key in image_features.keys(), 'You need to pass correct keys in dictionary!'
+                image = image_features[key]
+                if uniform_random is None:
+                    uniform_random = random_ops.random_uniform([], 0, 1.0, seed=None)
+                mirror_cond = math_ops.less(uniform_random, .5)
+                result = control_flow_ops.cond(
+                    mirror_cond,
+                    lambda: array_ops.reverse(image, [0]),
+                    lambda: image)
+                image_features[key] = fix_image_flip_shape(image, result)
         return image_features
 
 
@@ -313,8 +450,11 @@ class Threshold_Images(Image_Processor):
         self.upper = tf.constant(upper_bound, dtype='float32')
 
     def parse(self, image_features, *args, **kwargs):
-        image_features['image'] = tf.where(image_features['image'] > self.upper, self.upper, image_features['image'])
-        image_features['image'] = tf.where(image_features['image'] < self.lower, self.lower, image_features['image'])
+        image_features['image'] = tf.where(image_features['image'] > tf.cast(self.upper, dtype=image_features['image'].dtype),
+                                           tf.cast(self.upper, dtype=image_features['image'].dtype), image_features['image'])
+        image_features['image'] = tf.where(image_features['image'] < tf.cast(self.lower,dtype=image_features['image'].dtype),
+                                           tf.cast(self.lower,dtype=image_features['image'].dtype), image_features['image'])
+        image_features['image'] = tf.divide(image_features['image'],tf.cast(tf.subtract(self.upper,self.lower),dtype=image_features['image'].dtype))
         return image_features
 
 
