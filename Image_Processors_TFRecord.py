@@ -4,6 +4,7 @@ import SimpleITK as sitk
 import numpy as np
 from _collections import OrderedDict
 from .Resample_Class.Resample_Class import Resample_Class_Object
+from scipy.ndimage.filters import gaussian_filter
 from .Plot_And_Scroll_Images.Plot_Scroll_Images import plot_scroll_Image, plt
 
 
@@ -50,6 +51,25 @@ def get_bounding_boxes(annotation_handle,value):
 
 class Image_Processor(object):
     def parse(self, input_features):
+        return input_features
+
+
+class Gaussian_Uncertainty(Image_Processor):
+    def __init__(self, sigma=None):
+        '''
+        :param sigma: Desired sigma, in mm, in z, x, y direction
+        '''
+        self.sigma = sigma
+
+    def parse(self, input_features):
+        annotations = input_features['annotation']
+        spacing = input_features['spacing']
+        sigma = tuple(self.sigma/spacing)
+        filtered = gaussian_filter(annotations,sigma=sigma + (0,),mode='constant')
+        filtered[annotations[...,0] == 1] = 0
+        filtered[...,0] = annotations[...,0]
+        filtered /= np.sum(filtered,axis=-1)[...,None]
+        input_features['annotation'] = filtered
         return input_features
 
 
