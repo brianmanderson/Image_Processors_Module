@@ -110,11 +110,9 @@ class Fuzzy_Segment_Liver_Lobes(Image_Processor):
             annotation = image_features['annotation']
         else:
             annotation = image_features[-1][-1]
-        annotation = to_categorical(annotation,9)
-        image_features['annotation'] = annotation
-        return image_features
-        size = tf.random.uniform([2],minval=self.min_val, maxval=self.max_val)
-        filter_shape = tuple(tf.cast(tf.divide(size,image_features['spacing'][:2]), dtype=tf.dtypes.float32))
+        annotation = tf.cast(annotation,dtype=tf.dtypes.float32)
+        filter_size = tf.random.uniform([2],minval=self.min_val, maxval=self.max_val)
+        filter_shape = tuple(tf.cast(tf.divide(filter_size,image_features['spacing'][:2]), dtype=tf.dtypes.float32))
 
         # Explicitly pad the image
 
@@ -130,7 +128,7 @@ class Fuzzy_Segment_Liver_Lobes(Image_Processor):
         # has the value of 1 for each element.
         area = tf.math.reduce_prod(filter_shape)
         filter_shape += (tf.shape(annotation)[-1], 1)
-        kernel = tf.ones(shape=filter_shape, dtype=annotation.dtype)
+        kernel = tf.ones(shape=filter_shape, dtype='float32')
 
         annotation = tf.nn.depthwise_conv2d(annotation, kernel, strides=(1, 1, 1, 1), padding="VALID")
         annotation = tf.divide(annotation, area)
@@ -200,7 +198,10 @@ class Return_Add_Mult_Disease(Image_Processor):
 
     def parse(self, image_features, *args, **kwargs):
         annotation = image_features['annotation']
-        mask = tf.where(annotation > 0, 1, 0)
+        if annotation.shape[-1] != 1:
+            mask = tf.where(annotation[...,0] < 1, 1, 0)
+        else:
+            mask = tf.where(annotation > 0, 1, 0)
         if self.on_disease:
             annotation = tf.where(annotation == 2, 1, 0)
             image_features['annotation'] = annotation
