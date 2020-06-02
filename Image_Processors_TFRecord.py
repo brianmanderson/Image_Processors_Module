@@ -180,6 +180,22 @@ class Resampler(Image_Processor):
         return input_features
 
 
+class Cast_Data(Image_Processor):
+    def __init__(self, key_type_dict=None):
+        '''
+        :param key_type_dict: A dictionary of keys and datatypes wanted {'image':'float32'}
+        '''
+        assert key_type_dict is not None and type(key_type_dict) is dict, 'Need to provide a key_type_dict, something' \
+                                                                          ' like {"image":"float32"}'
+        self.key_type_dict = key_type_dict
+
+    def parse(self, image_features, *args, **kwargs):
+        for key in self.key_type_dict:
+            if key in image_features:
+                image_features[key] = image_features[key].astype(self.key_type_dict[key])
+        return image_features
+
+
 class Add_Images_And_Annotations(Image_Processor):
     def parse(self, input_features):
         image_path = input_features['image_path']
