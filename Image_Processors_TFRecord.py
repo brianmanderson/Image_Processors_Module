@@ -108,7 +108,6 @@ class Gaussian_Uncertainty(Image_Processor):
         filtered = np.zeros(annotations.shape)
         filtered[...,0] = annotations[...,0]
         for i in range(1,9):
-            print(i)
             sigma = self.sigma[i-1]
             sigma = [sigma/spacing[0], sigma/spacing[1], sigma/spacing[2]]
             annotation = annotations[...,i]
@@ -118,7 +117,6 @@ class Gaussian_Uncertainty(Image_Processor):
         # Now we've normed, but still have the problem that unconnected structures can still be there..
         filtered[filtered < 0.05] = 0
         for i in range(1,9):
-            print(i)
             annotation = filtered[...,i]
             slices = np.where(np.max(annotation,axis=(1,2))>0)
             for slice in slices[0]:
@@ -378,7 +376,7 @@ class Distribute_into_3D(Image_Processor):
                 continue # no annotation here
             image_features['image_path'] = image_path
             image_features['image'] = image
-            image_features['annotation'] = annotation.astype('int8')
+            image_features['annotation'] = annotation
             image_features['start'] = start
             image_features['stop'] = stop
             image_features['z_images'] = image.shape[0]
@@ -405,7 +403,7 @@ class Distribute_into_2D(Image_Processor):
             image_features = OrderedDict()
             image_features['image_path'] = image_path
             image_features['image'] = image[index]
-            image_features['annotation'] = annotation[index].astype('int8')
+            image_features['annotation'] = annotation[index]
             image_features['rows'] = rows
             image_features['cols'] = cols
             image_features['spacing'] = spacing[:-1]
@@ -553,7 +551,7 @@ class Box_Images(Image_Processor):
             img_shape = image_cube.shape
             out_images[:img_shape[0], :img_shape[1], :img_shape[2], ...] = image_cube
             out_annotations[:img_shape[0], :img_shape[1], :img_shape[2], ...] = annotation_cube
-            input_features['annotation'] = out_annotations.astype('int8')
+            input_features['annotation'] = out_annotations
             input_features['image'] = out_images
         return input_features
 
