@@ -54,6 +54,23 @@ class Image_Processor(object):
         return input_features
 
 
+class Remove_Smallest_Probabilty_Structure(object):
+    def __init__(self):
+        self.Connected_Component_Filter = sitk.ConnectedComponentImageFilter()
+        self.RelabelComponent = sitk.RelabelComponentImageFilter()
+        self.RelabelComponent.SortByObjectSizeOn()
+
+    def remove_lowest_probability(self, image_slice):
+        stats = sitk.LabelShapeStatisticsImageFilter()
+        thresholded_image = sitk.GetImageFromArray(image_slice) > 0
+        connected_image = self.Connected_Component_Filter.Execute(thresholded_image)
+        stats.Execute(connected_image)
+        bounding_boxes = [stats.GetBoundingBox(l) for l in stats.GetLabels()]
+        if len(bounding_boxes) == 1:
+            return image_slice
+        return bounding_boxes
+
+
 class Gaussian_Uncertainty(Image_Processor):
     def __init__(self, sigma=None):
         '''
@@ -62,13 +79,36 @@ class Gaussian_Uncertainty(Image_Processor):
         self.sigma = sigma
 
     def parse(self, input_features):
+        remove_smallest = Remove_Smallest_Probabilty_Structure()
         annotations = input_features['annotation']
         spacing = input_features['spacing']
-        sigma = tuple(self.sigma/spacing)
-        filtered = gaussian_filter(annotations,sigma=sigma + (0,),mode='constant')
+        filtered = np.zeros(annotations.shape)
+        filtered[...,0] = annotations[...,0]
+        for i in range(1,9):
+            print(i)
+            sigma = self.sigma[i-1]
+            sigma = [sigma/spacing[0], sigma/spacing[1], sigma/spacing[2]]
+            annotation = annotations[...,i]
+            filtered[...,i] = gaussian_filter(annotation,sigma=sigma,mode='constant')
+        norm = np.sum(filtered[..., 1:], axis=-1)
+        filtered /= norm[...,None]
         filtered[annotations[...,0] == 1] = 0
         filtered[...,0] = annotations[...,0]
-        filtered /= np.sum(filtered,axis=-1)[...,None]
+        # Now we've normed, but still have the problem that unconnected structures can still be there..
+        filtered[filtered < 0.05] = 0
+        for i in range(1,9):
+            annotation = filtered[...,i]
+            slices = np.where(np.max(annotation,axis=(1,2))>0)
+            for slice in slices[0]:
+                annotation[slice] = remove_smallest.remove_lowest_probability(annotation[slice])
+            handle = sitk.GetImageFromArray(annotation)
+            mask = sitk.GetArrayFromImage(remove_smallest.remove_smallest_component(handle))
+            annotation[mask == 0] = 0
+            filtered[...,i] = annotation
+        norm = np.sum(filtered[..., 1:], axis=-1)
+        filtered /= norm[...,None]
+        filtered[annotations[...,0] == 1] = 0
+        filtered[...,0] = annotations[...,0]
         input_features['annotation'] = filtered
         return input_features
 
