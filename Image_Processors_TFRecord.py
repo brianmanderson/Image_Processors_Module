@@ -386,6 +386,7 @@ class Split_Disease_Into_Cubes(Image_Processor):
                     stack_annotation = output_annotations
                 for box_index, [image_cube, annotation_cube] in enumerate(zip(stack_image, stack_annotation)):
                     temp_feature = OrderedDict()
+                    image_cube, annotation_cube = image_cube[0], annotation_cube[0]
                     temp_feature['image'] = image_cube[:self.cube_size[0]]
                     temp_feature['annotation'] = annotation_cube[:self.cube_size[0]]
                     for key in input_features:  # Bring along anything else we care about
