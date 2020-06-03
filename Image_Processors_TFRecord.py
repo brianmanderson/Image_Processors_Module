@@ -65,8 +65,9 @@ class To_Categorical(Image_Processor):
 
 
 class Resampler(Image_Processor):
-    def __init__(self, desired_output_spacing=(None,None,None), make_512=False):
+    def __init__(self, desired_output_spacing=(None,None,None), make_512=False, binary_annotation=True):
         self.desired_output_spacing = desired_output_spacing
+        self.binary_annotation = binary_annotation
         self.make_512 = make_512
 
     def parse(self, input_features):
@@ -90,9 +91,9 @@ class Resampler(Image_Processor):
             resampler = Resample_Class_Object()
             print('Resampling {} to {}'.format(input_spacing,output_spacing))
             image_handle = resampler.resample_image(input_image=image_handle,input_spacing=input_spacing,
-                                                         output_spacing=output_spacing,is_annotation=False)
+                                                    output_spacing=output_spacing,is_annotation=False)
             annotation_handle = resampler.resample_image(input_image=annotation_handle,input_spacing=input_spacing,
-                                                              output_spacing=output_spacing,is_annotation=True)
+                                                         output_spacing=output_spacing,is_annotation=self.binary_annotation)
             input_features['image'] = sitk.GetArrayFromImage(image_handle)
             input_features['annotation'] = sitk.GetArrayFromImage(annotation_handle)
             input_features['spacing'] = np.asarray(annotation_handle.GetSpacing(), dtype='float32')
