@@ -214,7 +214,7 @@ class Resampler(Image_Processor):
                                                            output_spacing=output_spacing,
                                                            is_annotation=self.binary_annotation)[...,None])
                 stacked = np.concatenate(output, axis=-1)
-                stacked[...,0] = 1-np.sum(stacked[...,1:])
+                stacked[...,0] = 1-np.sum(stacked[...,1:],axis=-1)
                 annotation_handle = sitk.GetImageFromArray(stacked)
                 annotation_handle.SetSpacing(image_handle.GetSpacing())
                 annotation_handle.SetDirection(image_handle.GetDirection())
