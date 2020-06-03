@@ -4,6 +4,7 @@ import SimpleITK as sitk
 import numpy as np
 from _collections import OrderedDict
 from .Resample_Class.Resample_Class import Resample_Class_Object
+from scipy.ndimage.filters import gaussian_filter
 from .Plot_And_Scroll_Images.Plot_Scroll_Images import plot_scroll_Image, plt
 
 
@@ -53,6 +54,86 @@ class Image_Processor(object):
         return input_features
 
 
+class Remove_Smallest_Structures(Image_Processor):
+    def __init__(self):
+        self.Connected_Component_Filter = sitk.ConnectedComponentImageFilter()
+        self.RelabelComponent = sitk.RelabelComponentImageFilter()
+        self.RelabelComponent.SortByObjectSizeOn()
+
+    def remove_smallest_component(self, annotation_handle):
+        label_image = self.Connected_Component_Filter.Execute(
+            sitk.BinaryThreshold(sitk.Cast(annotation_handle,sitk.sitkFloat32), lowerThreshold=0.01,
+                                 upperThreshold=np.inf))
+        label_image = self.RelabelComponent.Execute(label_image)
+        output = sitk.BinaryThreshold(sitk.Cast(label_image,sitk.sitkFloat32), lowerThreshold=0.1,upperThreshold=1.0)
+        return output
+
+
+class Remove_Lowest_Probabilty_Structure(object):
+    def __init__(self):
+        self.Connected_Component_Filter = sitk.ConnectedComponentImageFilter()
+        self.RelabelComponent = sitk.RelabelComponentImageFilter()
+        self.RelabelComponent.SortByObjectSizeOn()
+
+    def remove_lowest_probability(self, image_slice):
+        stats = sitk.LabelShapeStatisticsImageFilter()
+        thresholded_image = sitk.GetImageFromArray(image_slice) > 0
+        connected_image = self.Connected_Component_Filter.Execute(thresholded_image)
+        stats.Execute(connected_image)
+        if self.Connected_Component_Filter.GetObjectCount() < 2:
+            return image_slice
+        current = 0
+        for value in range(1, self.Connected_Component_Filter.GetObjectCount()+1):
+            mask = sitk.GetArrayFromImage(connected_image == value)
+            prob = np.max(image_slice[mask==1])
+            if prob > current:
+                current = prob
+                out_mask = mask
+        image_slice[out_mask==0] = 0
+        return image_slice
+
+
+class Gaussian_Uncertainty(Image_Processor):
+    def __init__(self, sigma=None):
+        '''
+        :param sigma: Desired sigma, in mm, in z, x, y direction
+        '''
+        self.sigma = sigma
+
+    def parse(self, input_features):
+        remove_lowest_probability = Remove_Lowest_Probabilty_Structure()
+        remove_smallest = Remove_Smallest_Structures()
+        annotations = input_features['annotation']
+        spacing = input_features['spacing']
+        filtered = np.zeros(annotations.shape)
+        filtered[...,0] = annotations[...,0]
+        for i in range(1,9):
+            sigma = self.sigma[i-1]
+            sigma = [sigma/spacing[0], sigma/spacing[1], sigma/spacing[2]]
+            annotation = annotations[...,i]
+            filtered[...,i] = gaussian_filter(annotation,sigma=sigma,mode='constant')
+        filtered[annotations[...,0] == 1] = 0
+        filtered[...,0] = annotations[...,0]
+        # Now we've normed, but still have the problem that unconnected structures can still be there..
+        filtered[filtered < 0.05] = 0
+        for i in range(1,9):
+            annotation = filtered[...,i]
+            slices = np.where(np.max(annotation,axis=(1,2))>0)
+            for slice in slices[0]:
+                annotation[slice] = remove_lowest_probability.remove_lowest_probability(annotation[slice])
+            mask_handle = remove_smallest.remove_smallest_component(sitk.GetImageFromArray(annotation)>0)
+            mask = sitk.GetArrayFromImage(mask_handle)
+            annotation[mask==0] = 0
+            filtered[..., i] = annotation
+        norm = np.sum(filtered[..., 1:], axis=-1)
+        filtered /= norm[...,None]
+        filtered = np.nan_to_num(filtered) # worry about true divide
+        filtered[annotations[...,0] == 1] = 0
+        filtered[...,0] = annotations[...,0]
+        input_features['annotation'] = filtered
+        return input_features
+
+
 class To_Categorical(Image_Processor):
     def __init__(self, num_classes=9):
         self.num_classes = num_classes
@@ -98,6 +179,22 @@ class Resampler(Image_Processor):
             input_features['annotation'] = sitk.GetArrayFromImage(annotation_handle)
             input_features['spacing'] = np.asarray(annotation_handle.GetSpacing(), dtype='float32')
         return input_features
+
+
+class Cast_Data(Image_Processor):
+    def __init__(self, key_type_dict=None):
+        '''
+        :param key_type_dict: A dictionary of keys and datatypes wanted {'image':'float32'}
+        '''
+        assert key_type_dict is not None and type(key_type_dict) is dict, 'Need to provide a key_type_dict, something' \
+                                                                          ' like {"image":"float32"}'
+        self.key_type_dict = key_type_dict
+
+    def parse(self, image_features, *args, **kwargs):
+        for key in self.key_type_dict:
+            if key in image_features:
+                image_features[key] = image_features[key].astype(self.key_type_dict[key])
+        return image_features
 
 
 class Add_Images_And_Annotations(Image_Processor):
@@ -296,7 +393,7 @@ class Distribute_into_3D(Image_Processor):
                 continue # no annotation here
             image_features['image_path'] = image_path
             image_features['image'] = image
-            image_features['annotation'] = annotation.astype('int8')
+            image_features['annotation'] = annotation
             image_features['start'] = start
             image_features['stop'] = stop
             image_features['z_images'] = image.shape[0]
@@ -323,7 +420,7 @@ class Distribute_into_2D(Image_Processor):
             image_features = OrderedDict()
             image_features['image_path'] = image_path
             image_features['image'] = image[index]
-            image_features['annotation'] = annotation[index].astype('int8')
+            image_features['annotation'] = annotation[index]
             image_features['rows'] = rows
             image_features['cols'] = cols
             image_features['spacing'] = spacing[:-1]
@@ -471,7 +568,7 @@ class Box_Images(Image_Processor):
             img_shape = image_cube.shape
             out_images[:img_shape[0], :img_shape[1], :img_shape[2], ...] = image_cube
             out_annotations[:img_shape[0], :img_shape[1], :img_shape[2], ...] = annotation_cube
-            input_features['annotation'] = out_annotations.astype('int8')
+            input_features['annotation'] = out_annotations
             input_features['image'] = out_images
         return input_features
 
