@@ -254,14 +254,6 @@ class Add_Images_And_Annotations(Image_Processor):
         return input_features
 
 
-class Add_Outcome(Image_Processor):
-    def parse(self, input_features):
-        image_path = input_features['image_path']
-        outcome = image_path.replace('Overall_Dat...')
-        input_features['Outcome'] = 1
-        return input_features
-
-
 class Add_Dose(Image_Processor):
     def parse(self, input_features):
         image_path = input_features['image_path']
@@ -395,7 +387,8 @@ class Split_Disease_Into_Cubes(Image_Processor):
                         if key not in temp_feature.keys():
                             temp_feature[key] = input_features[key]
                     out_features['Disease_Box_{}_{}'.format(cube_index, box_index)] = temp_feature
-            return out_features
+            input_features = out_features
+            return input_features
         return input_features
 
 
@@ -457,7 +450,8 @@ class Distribute_into_3D(Image_Processor):
                 if key not in image_features.keys():
                     image_features[key] = input_features[key] # Pass along all other keys.. be careful
             out_features['Image_{}'.format(index)] = image_features
-        return out_features
+        input_features = out_features
+        return input_features
 
 
 class Distribute_into_2D(Image_Processor):
@@ -478,7 +472,8 @@ class Distribute_into_2D(Image_Processor):
             image_features['cols'] = cols
             image_features['spacing'] = spacing[:-1]
             out_features['Image_{}'.format(index)] = image_features
-        return out_features
+        input_features = out_features
+        return input_features
 
 
 class NormalizeParotidMR(Image_Processor):
@@ -578,10 +573,15 @@ class Box_Images(Image_Processor):
     def parse(self, input_features):
         annotation = input_features['annotation']
         image = input_features['image']
-        mask = np.zeros(annotation.shape)
-        for val in self.wanted_vals_for_bbox:
-            mask[annotation == val] = 1
-        input_features['mask'] = mask
+        if len(annotation.shape) > 3:
+            mask = np.zeros(annotation.shape[:-1])
+            argmax_annotation = np.argmax(annotation, axis=-1)
+            for val in self.wanted_vals_for_bbox:
+                mask[argmax_annotation==val] = 1
+        else:
+            mask = np.zeros(annotation.shape)
+            for val in self.wanted_vals_for_bbox:
+                mask[annotation == val] = 1
         for val in [1]:
             add_indexes = Add_Bounding_Box_Indexes([val],label_name='mask')
             add_indexes.parse(input_features)
@@ -612,9 +612,12 @@ class Box_Images(Image_Processor):
                 min_rows = max([min_rows, self.min_rows])
             if self.min_cols is not None:
                 min_cols = max([min_cols, self.min_cols])
-            out_images = np.ones([min_images, min_rows, min_cols]) * np.min(image)
-            out_annotations = np.zeros([min_images, min_rows, min_cols], dtype='int8')
-            out_annotations[..., 0] = 1
+            out_images = np.ones([min_images, min_rows, min_cols], dtype=image.dtype) * np.min(image)
+            if len(annotation.shape) > 3:
+                out_annotations = np.zeros([min_images, min_rows, min_cols, annotation.shape[-1]], dtype=annotation.dtype)
+                out_annotations[..., 0] = 1
+            else:
+                out_annotations = np.ones([min_images, min_rows, min_cols], dtype=annotation.dtype)
             image_cube = image[z_start:z_start + min_images, r_start:r_start + min_rows, c_start:c_start + min_cols]
             annotation_cube = annotation[z_start:z_start + min_images, r_start:r_start + min_rows,
                               c_start:c_start + min_cols]
