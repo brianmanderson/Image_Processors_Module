@@ -366,20 +366,28 @@ class Split_Disease_Into_Cubes(Image_Processor):
                 image = image_base[z_start:z_stop, r_start:r_stop, c_start:c_stop]
                 annotation = annotation_base[z_start:z_stop, r_start:r_stop, c_start:c_stop]
 
-                stack = [np.stack([image,annotation],axis=0)]
+                stack_image, stack_annotation = [image[None,...]], [annotation[None,...]]
                 for axis in range(3):
-                    output = []
-                    for i in stack:
+                    output_images = []
+                    output_annotations = []
+                    for i in stack_image:
                         split = i.shape[axis+1] // self.cube_size[axis]
                         if split > 1:
-                            output += np.array_split(i, split, axis=axis+1)
+                            output_images += np.array_split(i, split, axis=axis+1)
                         else:
-                            output += [i]
-                    stack = output
-                for box_index, cube in enumerate(stack):
+                            output_images += [i]
+                    for i in stack_annotation:
+                        split = i.shape[axis+1] // self.cube_size[axis]
+                        if split > 1:
+                            output_annotations += np.array_split(i, split, axis=axis+1)
+                        else:
+                            output_annotations += [i]
+                    stack_image = output_images
+                    stack_annotation = output_annotations
+                for box_index, [image_cube, annotation_cube] in enumerate(zip(stack_image, stack_annotation)):
                     temp_feature = OrderedDict()
-                    temp_feature['image'] = cube[0][:self.cube_size[0]]
-                    temp_feature['annotation'] = cube[1][:self.cube_size[0]].astype('int8')
+                    temp_feature['image'] = image_cube[:self.cube_size[0]]
+                    temp_feature['annotation'] = annotation_cube[:self.cube_size[0]]
                     for key in input_features:  # Bring along anything else we care about
                         if key not in temp_feature.keys():
                             temp_feature[key] = input_features[key]
@@ -628,14 +636,15 @@ class Add_Bounding_Box_Indexes(Image_Processor):
     def parse(self, input_features):
         annotation_base = input_features[self.label_name]
         for val in self.wanted_vals_for_bbox:
+            temp_val = val
             if len(annotation_base.shape) > 3:
                 annotation = (annotation_base[..., val] > 0).astype('int')
-                slices = np.where(annotation > 0)
+                temp_val = 1
             else:
                 annotation = annotation_base
-                slices = np.where(annotation == val)
+            slices = np.where(annotation == temp_val)
             if slices:
-                bounding_boxes, voxel_volumes = get_bounding_boxes(sitk.GetImageFromArray(annotation), val)
+                bounding_boxes, voxel_volumes = get_bounding_boxes(sitk.GetImageFromArray(annotation), temp_val)
                 input_features['voxel_volumes_{}'.format(val)] = voxel_volumes
                 input_features['bounding_boxes_{}'.format(val)] = bounding_boxes
                 input_features = add_bounding_box_to_dict(input_features=input_features, bounding_box=bounding_boxes[0],
