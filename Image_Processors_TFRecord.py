@@ -89,10 +89,8 @@ def return_example_proto(base_dictionary, image_dictionary_for_pickle={}, data_t
     return example_proto
 
 
-def serialize_example(image_path, annotation_path, overall_dict={}, image_processors=None):
-    base_dictionary = get_features(image_path,annotation_path, image_processors=image_processors)
-    for image_key in base_dictionary:
-        overall_dict['{}_{}'.format(image_path, image_key)] = base_dictionary[image_key]
+def serialize_example(image_path, annotation_path, image_processors=None, record_writer=None):
+    get_features(image_path,annotation_path, image_processors=image_processors, record_writer=record_writer)
 
 
 class Record_Writer(Image_Processor):
@@ -107,17 +105,23 @@ class Record_Writer(Image_Processor):
         filename = os.path.join(self.file_path,'{}.tfrecord'.format(image_name))
         features = OrderedDict()
         d_type = OrderedDict()
-        example_proto = return_example_proto(input_features, features, d_type)
         writer = tf.io.TFRecordWriter(filename)
-        writer.write(example_proto.SerializeToString())
+        examples = 0
+        for key in input_features.keys():
+            example_proto = return_example_proto(input_features[key], features, d_type)
+            writer.write(example_proto.SerializeToString())
+            examples += 1
         writer.close()
+        fid = open(filename.replace('.tfrecord', '_Num_Examples.txt'), 'w+')
+        fid.write(str(examples))
+        fid.close()
         save_obj(filename.replace('.tfrecord', '_features.pkl'), features)
         save_obj(filename.replace('.tfrecord', '_dtype.pkl'), d_type)
         del input_features
         return {}
 
 
-def get_features(image_path, annotation_path, image_processors=None):
+def get_features(image_path, annotation_path, image_processors=None, record_writer=None):
     features = OrderedDict()
     features['image_path'] = image_path
     features['annotation_path'] = annotation_path
@@ -127,7 +131,7 @@ def get_features(image_path, annotation_path, image_processors=None):
             for key in features.keys():
                 features[key] = image_processor.parse(features[key])
         features, _ = down_dictionary(features, OrderedDict(), 0)
-    return features
+    record_writer(features)
 
 
 def down_dictionary(input_dictionary, out_dictionary=OrderedDict(), out_index=0):
