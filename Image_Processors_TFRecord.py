@@ -128,6 +128,7 @@ def get_features(image_path, annotation_path, image_processors=None, record_writ
     features['annotation_path'] = annotation_path
     if image_processors is not None:
         for image_processor in image_processors:
+            print(image_processor)
             features, _ = down_dictionary(features, OrderedDict(), 0)
             for key in features.keys():
                 features[key] = image_processor.parse(features[key])
@@ -180,9 +181,12 @@ def get_start_stop(annotation, extension=np.inf, desired_val=1):
 
 def get_bounding_boxes(annotation_handle,value):
     Connected_Component_Filter = sitk.ConnectedComponentImageFilter()
+    RelabelComponent = sitk.RelabelComponentImageFilter()
+    RelabelComponent.SortByObjectSizeOn()
     stats = sitk.LabelShapeStatisticsImageFilter()
     thresholded_image = sitk.BinaryThreshold(annotation_handle,lowerThreshold=value,upperThreshold=value+1)
     connected_image = Connected_Component_Filter.Execute(thresholded_image)
+    connected_image = RelabelComponent.Execute(connected_image)
     stats.Execute(connected_image)
     bounding_boxes = [stats.GetBoundingBox(l) for l in stats.GetLabels()]
     num_voxels = np.asarray([stats.GetNumberOfPixels(l) for l in stats.GetLabels()]).astype('float32')
@@ -712,7 +716,7 @@ class Box_Images(Image_Processor):
             mask = np.zeros(annotation.shape[:-1])
             argmax_annotation = np.argmax(annotation, axis=-1)
             for val in self.wanted_vals_for_bbox:
-                mask[argmax_annotation==val] = 1
+                mask[argmax_annotation == val] = 1
         else:
             mask = np.zeros(annotation.shape)
             for val in self.wanted_vals_for_bbox:
