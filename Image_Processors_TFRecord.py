@@ -166,6 +166,8 @@ def to_categorical(y, num_classes=None, dtype='float32'):
 
 
 def get_start_stop(annotation, extension=np.inf, desired_val=1):
+    if len(annotation.shape) > 3:
+        annotation = np.argmax(annotation,axis=-1)
     non_zero_values = np.where(np.max(annotation,axis=(1,2)) >= desired_val)[0]
     start, stop = -1, -1
     if non_zero_values.any():
