@@ -101,7 +101,8 @@ class Record_Writer(Image_Processor):
             os.makedirs(file_path)
 
     def parse(self, input_features):
-        image_name = os.path.split(input_features['image_path'])[-1].split('.nii')[0]
+        keys = list(input_features.keys())
+        image_name = os.path.split(input_features[keys[0]]['image_path'])[-1].split('.nii')[0]
         filename = os.path.join(self.file_path,'{}.tfrecord'.format(image_name))
         features = OrderedDict()
         d_type = OrderedDict()
@@ -131,7 +132,7 @@ def get_features(image_path, annotation_path, image_processors=None, record_writ
             for key in features.keys():
                 features[key] = image_processor.parse(features[key])
         features, _ = down_dictionary(features, OrderedDict(), 0)
-    record_writer(features)
+    record_writer.parse(features)
 
 
 def down_dictionary(input_dictionary, out_dictionary=OrderedDict(), out_index=0):
