@@ -5,7 +5,140 @@ import numpy as np
 from _collections import OrderedDict
 from .Resample_Class.Resample_Class import Resample_Class_Object
 from scipy.ndimage.filters import gaussian_filter
+import tensorflow as tf
+import os, pickle
 from .Plot_And_Scroll_Images.Plot_Scroll_Images import plot_scroll_Image, plt
+
+
+
+class Image_Processor(object):
+    def parse(self, input_features):
+        return input_features
+
+
+def save_obj(path, obj): # Save almost anything.. dictionary, list, etc.
+    if path.find('.pkl') == -1:
+        path += '.pkl'
+    with open(path, 'wb') as f:
+        pickle.dump(obj, f)
+    return None
+
+
+def load_obj(path):
+    if path.find('.pkl') == -1:
+        path += '.pkl'
+    if os.path.exists(path):
+        with open(path, 'rb') as f:
+            return pickle.load(f)
+    else:
+        out = OrderedDict()
+        return out
+
+
+def return_feature(data):
+    if type(data) is int:
+        return _int64_feature(tf.constant(data, dtype='int64'))
+    elif type(data) is np.ndarray:
+        return _bytes_feature(data.tostring())
+    elif type(data) is str:
+        return _bytes_feature(tf.constant(data))
+    elif type(data) is np.float32:
+        return _float_feature(tf.constant(data, dtype='float32'))
+
+
+def _bytes_feature(value):
+    if isinstance(value, type(tf.constant(0))):
+        value = value.numpy()
+    return tf.train.Feature(bytes_list=tf.train.BytesList(value=[value]))
+
+
+def _float_feature(value):
+    return tf.train.Feature(float_list=tf.train.FloatList(value=[value]))
+
+
+def _float_features(values):
+    return tf.train.Features(float_list=tf.train.FloatList(values=[values]))
+
+
+def _int64_feature(value):
+    return tf.train.Feature(int64_list=tf.train.Int64List(value=[value]))
+
+
+def return_example_proto(base_dictionary, image_dictionary_for_pickle={}, data_type_dictionary={}):
+    feature = OrderedDict()
+    for key in base_dictionary:
+        data = base_dictionary[key]
+        if type(data) is int:
+            feature[key] = _int64_feature(tf.constant(data, dtype='int64'))
+            if key not in image_dictionary_for_pickle:
+                image_dictionary_for_pickle[key] = tf.io.FixedLenFeature([], tf.int64)
+        elif type(data) is np.ndarray:
+            feature[key] = _bytes_feature(data.tostring())
+            if key not in image_dictionary_for_pickle:
+                image_dictionary_for_pickle[key] = tf.io.FixedLenFeature([], tf.string)
+                data_type_dictionary[key] = data.dtype
+        elif type(data) is str:
+            feature[key] = _bytes_feature(tf.constant(data))
+            if key not in image_dictionary_for_pickle:
+                image_dictionary_for_pickle[key] = tf.io.FixedLenFeature([], tf.string)
+        elif type(data) is np.float32:
+            feature[key] = _float_feature(tf.constant(data, dtype='float32'))
+            if key not in image_dictionary_for_pickle:
+                image_dictionary_for_pickle[key] = tf.io.FixedLenFeature([], tf.float32)
+    example_proto = tf.train.Example(features=tf.train.Features(feature=feature))
+    return example_proto
+
+
+def serialize_example(image_path, annotation_path, overall_dict={}, image_processors=None):
+    base_dictionary = get_features(image_path,annotation_path, image_processors=image_processors)
+    for image_key in base_dictionary:
+        overall_dict['{}_{}'.format(image_path, image_key)] = base_dictionary[image_key]
+
+
+class Record_Writer(Image_Processor):
+    def __init__(self, file_path=None):
+        assert file_path is not None, "You need to pass a base file path..."
+        self.file_path = file_path
+        if not os.path.exists(file_path):
+            os.makedirs(file_path)
+
+    def parse(self, input_features):
+        image_name = os.path.split(input_features['image_path'])[-1].split('.nii')[0]
+        filename = os.path.join(self.file_path,'{}.tfrecord'.format(image_name))
+        features = OrderedDict()
+        d_type = OrderedDict()
+        example_proto = return_example_proto(input_features, features, d_type)
+        writer = tf.io.TFRecordWriter(filename)
+        writer.write(example_proto.SerializeToString())
+        writer.close()
+        save_obj(filename.replace('.tfrecord', '_features.pkl'), features)
+        save_obj(filename.replace('.tfrecord', '_dtype.pkl'), d_type)
+        del input_features
+        return {}
+
+
+def get_features(image_path, annotation_path, image_processors=None):
+    features = OrderedDict()
+    features['image_path'] = image_path
+    features['annotation_path'] = annotation_path
+    if image_processors is not None:
+        for image_processor in image_processors:
+            features, _ = down_dictionary(features, OrderedDict(), 0)
+            for key in features.keys():
+                features[key] = image_processor.parse(features[key])
+        features, _ = down_dictionary(features, OrderedDict(), 0)
+    return features
+
+
+def down_dictionary(input_dictionary, out_dictionary=OrderedDict(), out_index=0):
+    if 'image_path' in input_dictionary.keys():
+        out_dictionary['Example_{}'.format(out_index)] = input_dictionary
+        out_index += 1
+        return out_dictionary, out_index
+    else:
+        for key in input_dictionary.keys():
+            out_dictionary, out_index = down_dictionary(input_dictionary[key], out_dictionary, out_index)
+    return out_dictionary, out_index
 
 
 def to_categorical(y, num_classes=None, dtype='float32'):
@@ -47,11 +180,6 @@ def get_bounding_boxes(annotation_handle,value):
     bounding_boxes = [stats.GetBoundingBox(l) for l in stats.GetLabels()]
     num_voxels = np.asarray([stats.GetNumberOfPixels(l) for l in stats.GetLabels()]).astype('float32')
     return bounding_boxes, num_voxels
-
-
-class Image_Processor(object):
-    def parse(self, input_features):
-        return input_features
 
 
 class Remove_Smallest_Structures(Image_Processor):
