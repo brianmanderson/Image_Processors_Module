@@ -712,7 +712,9 @@ class Box_Images(Image_Processor):
                 mask[annotation == val] = 1
         for val in [1]:
             add_indexes = Add_Bounding_Box_Indexes([val],label_name='mask')
+            input_features['mask'] = mask
             add_indexes.parse(input_features)
+            del input_features['mask']
             z_start, z_stop, r_start, r_stop, c_start, c_stop = add_bounding_box_to_dict(
                 input_features['bounding_boxes_{}'.format(val)][0], return_indexes=True)
 
