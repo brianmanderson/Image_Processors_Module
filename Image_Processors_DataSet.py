@@ -233,7 +233,6 @@ class Return_Add_Mult_Disease(Image_Processor):
         return image_features
 
 
-
 class Expand_Dimensions(Image_Processor):
     def __init__(self, axis=-1, on_images=True, on_annotations=False):
         self.axis = axis
