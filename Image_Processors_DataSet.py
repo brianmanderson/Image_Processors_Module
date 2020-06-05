@@ -218,7 +218,7 @@ class Return_Add_Mult_Disease(Image_Processor):
     def parse(self, image_features, *args, **kwargs):
         annotation = image_features['annotation']
         if annotation.shape[-1] != 1:
-            mask = tf.expand_dims(tf.where(tf.reduce_sum(annotation[...,1:],axis=-1) > .99, 1, 0), axis=-1)
+            mask = tf.expand_dims(tf.where(tf.cast(tf.reduce_sum(annotation[...,1:],axis=-1),'float16') > .99, 1, 0), axis=-1)
             if self.on_disease:
                 annotation = tf.expand_dims(annotation[...,2], axis=-1) # Kick out everything except for the disease
                 image_features['annotation'] = annotation
