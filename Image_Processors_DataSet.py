@@ -240,6 +240,19 @@ class Return_Add_Mult_Disease(Image_Processor):
         return image_features
 
 
+class Combine_Liver_Lobe_Segments(Image_Processor):
+    '''
+    Combines segments 5, 6, 7 and 8 into 5
+    '''
+    def parse(self, image_features, *args, **kwargs):
+        annotation = image_features['annotation']
+        output = [tf.expand_dims(annotation[...,i], axis=-1) for i in range(5)]
+        output.append(tf.expand_dims(tf.reduce_sum(annotation[...,5:],axis=-1),axis=-1))
+        output = tf.concat(output,axis=-1)
+        image_features['annotation'] = output
+        return image_features
+
+
 class Expand_Dimensions(Image_Processor):
     def __init__(self, axis=-1, on_images=True, on_annotations=False):
         self.axis = axis
