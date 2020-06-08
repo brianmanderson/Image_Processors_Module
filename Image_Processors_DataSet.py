@@ -197,15 +197,22 @@ class Pad_Z_Images_w_Reflections(Image_Processor):
 
 
 class Ensure_Image_Proportions(Image_Processor):
-    def __init__(self, image_rows=512, image_cols=512):
+    def __init__(self, image_rows=512, image_cols=512, preserve_aspect_ratio=False):
         self.image_rows = tf.constant(image_rows)
         self.image_cols = tf.constant(image_cols)
+        self.preserve_aspect_ratio = preserve_aspect_ratio
 
     def parse(self, image_features, *args, **kwargs):
         assert len(image_features['image'].shape) > 2, 'You should do an expand_dimensions before this!'
-        image_features['image'] = tf.image.resize_with_crop_or_pad(image_features['image'], target_width=self.image_rows,
+        image_features['image'] = tf.image.resize(image_features['image'], (self.image_rows, self.image_cols),
+                                                  preserve_aspect_ratio=self.preserve_aspect_ratio)
+        image_features['annotation'] = tf.image.resize(image_features['annotation'], (self.image_rows, self.image_cols),
+                                                       preserve_aspect_ratio=self.preserve_aspect_ratio)
+        image_features['image'] = tf.image.resize_with_crop_or_pad(image_features['image'],
+                                                                   target_width=self.image_rows,
                                                                    target_height=self.image_cols)
-        image_features['annotation'] = tf.image.resize_with_crop_or_pad(image_features['annotation'], target_width=self.image_rows,
+        image_features['annotation'] = tf.image.resize_with_crop_or_pad(image_features['annotation'],
+                                                                        target_width=self.image_rows,
                                                                         target_height=self.image_cols)
         return image_features
 
