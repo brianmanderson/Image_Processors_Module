@@ -754,7 +754,7 @@ class Box_Images(Image_Processor):
                 out_annotations = np.zeros([min_images, min_rows, min_cols, annotation.shape[-1]], dtype=annotation.dtype)
                 out_annotations[..., 0] = 1
             else:
-                out_annotations = np.ones([min_images, min_rows, min_cols], dtype=annotation.dtype)
+                out_annotations = np.zeros([min_images, min_rows, min_cols], dtype=annotation.dtype)
             image_cube = image[z_start:z_start + min_images, r_start:r_start + min_rows, c_start:c_start + min_cols]
             annotation_cube = annotation[z_start:z_start + min_images, r_start:r_start + min_rows,
                               c_start:c_start + min_cols]
