@@ -189,7 +189,7 @@ def get_bounding_boxes(annotation_handle,value):
     return bounding_boxes, num_voxels
 
 
-class Remove_Smallest_Structures(Image_Processor):
+class Remove_Smallest_Structures(object):
     def __init__(self):
         self.Connected_Component_Filter = sitk.ConnectedComponentImageFilter()
         self.RelabelComponent = sitk.RelabelComponentImageFilter()
