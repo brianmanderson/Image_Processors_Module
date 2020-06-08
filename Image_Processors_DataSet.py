@@ -225,17 +225,19 @@ class Return_Add_Mult_Disease(Image_Processor):
     def parse(self, image_features, *args, **kwargs):
         annotation = image_features['annotation']
         if annotation.shape[-1] != 1:
-            mask = tf.where(annotation[...,0] < 1, 1, 0)
+            mask = tf.expand_dims(tf.where(tf.cast(tf.reduce_sum(annotation[...,1:],axis=-1),'float16') > .99, 1, 0), axis=-1)
+            if self.on_disease:
+                annotation = tf.expand_dims(annotation[...,2], axis=-1) # Kick out everything except for the disease
+                image_features['annotation'] = annotation
         else:
             mask = tf.where(annotation > 0, 1, 0)
-        if self.on_disease:
-            annotation = tf.where(annotation == 2, 1, 0)
-            image_features['annotation'] = annotation
+            if self.on_disease:
+                annotation = tf.where(annotation == 2, 1, 0)
+                image_features['annotation'] = annotation
         image_features['mask'] = mask
         if self.change_background:
             image_features['image'] = tf.where(mask == 0, tf.cast(0, dtype=image_features['image'].dtype), image_features['image'])
         return image_features
-
 
 
 class Expand_Dimensions(Image_Processor):
