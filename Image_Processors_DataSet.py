@@ -467,6 +467,25 @@ class Threshold_Images(Image_Processor):
         return image_features
 
 
+class Pad_Images(Image_Processor):
+    '''
+    Won't work unless image_size is defined explicitly
+    '''
+    def parse(self, image_features, *args, **kwargs):
+        image = image_features['image']
+        value = tf.constant(512)
+        zero = tf.constant(0)
+        r_total, c_total = image.shape[-3:-1]
+        remainder_r = tf.math.floormod(value - r_total, value) if tf.math.floormod(r_total, value) != zero else zero
+        remainder_c = tf.math.floormod(value - c_total, value) if tf.math.floormod(c_total, value) != zero else zero
+        image_features['image'] = tf.image.resize_with_crop_or_pad(image_features['image'],
+                                                                   target_width=tf.add(remainder_r,r_total),
+                                                                   target_height=tf.add(remainder_c,c_total))
+        image_features['annotation'] = tf.image.resize_with_crop_or_pad(image_features['annotation'],
+                                                                        target_width=tf.add(remainder_r,r_total),
+                                                                        target_height=tf.add(remainder_c,c_total))
+
+
 class Clip_Images(Image_Processor):
     def __init__(self, annotations_index=None, bounding_box_expansion=(10, 10, 10), power_val_z=1, power_val_r=1,
                  power_val_c=1, min_images=0, min_rows=0, min_cols=0):
