@@ -100,7 +100,7 @@ class Combine_image_RT_Dose(Image_Processor):
         input_features['combined'] = output
         return input_features
 
-from tensorflow.keras.utils import to_categorical
+
 class Fuzzy_Segment_Liver_Lobes(Image_Processor):
     def __init__(self, min_val=0, max_val=None, num_classes=9):
         '''
@@ -207,14 +207,20 @@ class Ensure_Image_Proportions(Image_Processor):
         assert len(image_features['image'].shape) > 2, 'You should do an expand_dimensions before this!'
         image_features['image'] = tf.image.resize(image_features['image'], (self.image_rows, self.image_cols),
                                                   preserve_aspect_ratio=self.preserve_aspect_ratio)
-        image_features['annotation'] = tf.image.resize(image_features['annotation'], (self.image_rows, self.image_cols),
-                                                       preserve_aspect_ratio=self.preserve_aspect_ratio)
         image_features['image'] = tf.image.resize_with_crop_or_pad(image_features['image'],
                                                                    target_width=self.image_rows,
                                                                    target_height=self.image_cols)
-        image_features['annotation'] = tf.image.resize_with_crop_or_pad(image_features['annotation'],
-                                                                        target_width=self.image_rows,
-                                                                        target_height=self.image_cols)
+        annotation = image_features['annotation']
+        annotation = tf.image.resize(annotation, (self.image_rows, self.image_cols),
+                                     preserve_aspect_ratio=self.preserve_aspect_ratio)
+
+        annotation = tf.image.resize_with_crop_or_pad(annotation, target_width=self.image_rows,
+                                                      target_height=self.image_cols)
+        if annotation.shape[-1] != 1:
+            annotation = annotation[..., 1:] # remove background
+            background = tf.expand_dims(1-tf.reduce_sum(annotation,axis=-1), axis=-1)
+            annotation = tf.concat([background, annotation], axis=-1)
+        image_features['annotation'] = annotation
         return image_features
 
 
