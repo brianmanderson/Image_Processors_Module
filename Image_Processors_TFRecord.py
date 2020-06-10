@@ -258,7 +258,7 @@ class Gaussian_Uncertainty(Image_Processor):
         filtered[...,0] = annotations[...,0]
         # Now we've normed, but still have the problem that unconnected structures can still be there..
         filtered[filtered < 0.05] = 0
-        for i in range(1,9):
+        for i in range(1,num_classes):
             annotation = filtered[...,i]
             slices = np.where(np.max(annotation,axis=(1,2))>0)
             for slice in slices[0]:
