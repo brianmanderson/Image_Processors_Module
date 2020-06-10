@@ -294,7 +294,7 @@ class Combine_Annotations(Image_Processor):
 
 
 class To_Categorical(Image_Processor):
-    def __init__(self, num_classes=9):
+    def __init__(self, num_classes=None):
         self.num_classes = num_classes
 
     def parse(self, input_features):
