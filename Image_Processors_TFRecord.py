@@ -257,21 +257,20 @@ class Gaussian_Uncertainty(Image_Processor):
         filtered[annotations[...,0] == 1] = 0
         filtered[...,0] = annotations[...,0]
         # Now we've normed, but still have the problem that unconnected structures can still be there..
-        filtered[filtered < 0.05] = 0
         for i in range(1,num_classes):
             annotation = filtered[...,i]
+            annotation[annotation < 0.05] = 0
             slices = np.where(np.max(annotation,axis=(1,2))>0)
             for slice in slices[0]:
                 annotation[slice] = remove_lowest_probability.remove_lowest_probability(annotation[slice])
             mask_handle = remove_smallest.remove_smallest_component(sitk.GetImageFromArray(annotation)>0)
             mask = sitk.GetArrayFromImage(mask_handle)
-            annotation[mask==0] = 0
-            filtered[..., i] = annotation
-        norm = np.sum(filtered[..., 1:], axis=-1)
+            masked_filter = filtered[...,i]*mask
+            filtered[..., i] = masked_filter
+        norm = np.sum(filtered, axis=-1)
+        filtered[...,0] += (norm == 0).astype('int')
+        norm[norm == 0] = 1
         filtered /= norm[...,None]
-        filtered = np.nan_to_num(filtered) # worry about true divide
-        filtered[annotations[...,0] == 1] = 0
-        filtered[...,0] = annotations[...,0]
         input_features['annotation'] = filtered
         return input_features
 
