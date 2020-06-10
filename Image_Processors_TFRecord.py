@@ -89,8 +89,9 @@ def return_example_proto(base_dictionary, image_dictionary_for_pickle={}, data_t
     return example_proto
 
 
-def serialize_example(image_path, annotation_path, image_processors=None, record_writer=None):
-    get_features(image_path,annotation_path, image_processors=image_processors, record_writer=record_writer)
+def serialize_example(image_path, annotation_path, image_processors=None, record_writer=None, verbose=False):
+    get_features(image_path,annotation_path, image_processors=image_processors, record_writer=record_writer,
+                 verbose=verbose)
 
 
 class Record_Writer(Image_Processor):
@@ -122,13 +123,15 @@ class Record_Writer(Image_Processor):
         return {}
 
 
-def get_features(image_path, annotation_path, image_processors=None, record_writer=None):
+def get_features(image_path, annotation_path, image_processors=None, record_writer=None, verbose=0):
     features = OrderedDict()
     features['image_path'] = image_path
     features['annotation_path'] = annotation_path
     if image_processors is not None:
         for image_processor in image_processors:
             features, _ = down_dictionary(features, OrderedDict(), 0)
+            if verbose:
+                print(image_processor)
             for key in features.keys():
                 features[key] = image_processor.parse(features[key])
         features, _ = down_dictionary(features, OrderedDict(), 0)
