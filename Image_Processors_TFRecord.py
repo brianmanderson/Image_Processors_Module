@@ -242,7 +242,11 @@ class Gaussian_Uncertainty(Image_Processor):
         spacing = input_features['spacing']
         filtered = np.zeros(annotations.shape)
         filtered[...,0] = annotations[...,0]
-        for i in range(1,9):
+        if len(annotations.shape) == 3:
+            num_classes = np.max(annotations)
+        else:
+            num_classes = annotations.shape[-1]
+        for i in range(1,num_classes):
             sigma = self.sigma[i-1]
             sigma = [sigma/spacing[0], sigma/spacing[1], sigma/spacing[2]]
             annotation = annotations[...,i]
@@ -266,6 +270,24 @@ class Gaussian_Uncertainty(Image_Processor):
         filtered[annotations[...,0] == 1] = 0
         filtered[...,0] = annotations[...,0]
         input_features['annotation'] = filtered
+        return input_features
+
+
+class Combine_Annotations(Image_Processor):
+    def __init__(self, annotation_input=[5,6,7,8], to_annotation=5):
+        self.annotation_input = annotation_input
+        self.to_annotation = to_annotation
+
+    def parse(self, input_features):
+        annotation = input_features['annotation']
+        assert len(annotation.shape) == 3 or len(annotation.shape) == 4, 'To combine annotations the size has to be 3 or 4'
+        if len(annotation.shape) == 3:
+            for val in self.annotation_input:
+                annotation[annotation == val] = self.to_annotation
+        elif len(annotation.shape) == 4:
+            annotation[..., self.to_annotation] += annotation[..., self.annotation_input]
+            del annotation[..., self.annotation_input]
+        input_features['annotation'] = annotation
         return input_features
 
 
