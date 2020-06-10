@@ -89,8 +89,9 @@ def return_example_proto(base_dictionary, image_dictionary_for_pickle={}, data_t
     return example_proto
 
 
-def serialize_example(image_path, annotation_path, image_processors=None, record_writer=None):
-    get_features(image_path,annotation_path, image_processors=image_processors, record_writer=record_writer)
+def serialize_example(image_path, annotation_path, image_processors=None, record_writer=None, verbose=False):
+    get_features(image_path,annotation_path, image_processors=image_processors, record_writer=record_writer,
+                 verbose=verbose)
 
 
 class Record_Writer(Image_Processor):
@@ -122,13 +123,15 @@ class Record_Writer(Image_Processor):
         return {}
 
 
-def get_features(image_path, annotation_path, image_processors=None, record_writer=None):
+def get_features(image_path, annotation_path, image_processors=None, record_writer=None, verbose=0):
     features = OrderedDict()
     features['image_path'] = image_path
     features['annotation_path'] = annotation_path
     if image_processors is not None:
         for image_processor in image_processors:
             features, _ = down_dictionary(features, OrderedDict(), 0)
+            if verbose:
+                print(image_processor)
             for key in features.keys():
                 features[key] = image_processor.parse(features[key])
         features, _ = down_dictionary(features, OrderedDict(), 0)
@@ -242,7 +245,11 @@ class Gaussian_Uncertainty(Image_Processor):
         spacing = input_features['spacing']
         filtered = np.zeros(annotations.shape)
         filtered[...,0] = annotations[...,0]
-        for i in range(1,9):
+        if len(annotations.shape) == 3:
+            num_classes = np.max(annotations)
+        else:
+            num_classes = annotations.shape[-1]
+        for i in range(1,num_classes):
             sigma = self.sigma[i-1]
             sigma = [sigma/spacing[0], sigma/spacing[1], sigma/spacing[2]]
             annotation = annotations[...,i]
@@ -250,27 +257,44 @@ class Gaussian_Uncertainty(Image_Processor):
         filtered[annotations[...,0] == 1] = 0
         filtered[...,0] = annotations[...,0]
         # Now we've normed, but still have the problem that unconnected structures can still be there..
-        filtered[filtered < 0.05] = 0
-        for i in range(1,9):
+        for i in range(1,num_classes):
             annotation = filtered[...,i]
+            annotation[annotation < 0.05] = 0
             slices = np.where(np.max(annotation,axis=(1,2))>0)
             for slice in slices[0]:
                 annotation[slice] = remove_lowest_probability.remove_lowest_probability(annotation[slice])
             mask_handle = remove_smallest.remove_smallest_component(sitk.GetImageFromArray(annotation)>0)
             mask = sitk.GetArrayFromImage(mask_handle)
-            annotation[mask==0] = 0
-            filtered[..., i] = annotation
-        norm = np.sum(filtered[..., 1:], axis=-1)
+            masked_filter = filtered[...,i]*mask
+            filtered[..., i] = masked_filter
+        norm = np.sum(filtered, axis=-1)
+        filtered[...,0] += (norm == 0).astype('int')
+        norm[norm == 0] = 1
         filtered /= norm[...,None]
-        filtered = np.nan_to_num(filtered) # worry about true divide
-        filtered[annotations[...,0] == 1] = 0
-        filtered[...,0] = annotations[...,0]
         input_features['annotation'] = filtered
         return input_features
 
 
+class Combine_Annotations(Image_Processor):
+    def __init__(self, annotation_input=[5,6,7,8], to_annotation=5):
+        self.annotation_input = annotation_input
+        self.to_annotation = to_annotation
+
+    def parse(self, input_features):
+        annotation = input_features['annotation']
+        assert len(annotation.shape) == 3 or len(annotation.shape) == 4, 'To combine annotations the size has to be 3 or 4'
+        if len(annotation.shape) == 3:
+            for val in self.annotation_input:
+                annotation[annotation == val] = self.to_annotation
+        elif len(annotation.shape) == 4:
+            annotation[..., self.to_annotation] += annotation[..., self.annotation_input]
+            del annotation[..., self.annotation_input]
+        input_features['annotation'] = annotation
+        return input_features
+
+
 class To_Categorical(Image_Processor):
-    def __init__(self, num_classes=9):
+    def __init__(self, num_classes=None):
         self.num_classes = num_classes
 
     def parse(self, input_features):
