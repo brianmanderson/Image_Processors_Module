@@ -100,7 +100,7 @@ class Combine_image_RT_Dose(Image_Processor):
         input_features['combined'] = output
         return input_features
 
-from tensorflow.keras.utils import to_categorical
+
 class Fuzzy_Segment_Liver_Lobes(Image_Processor):
     def __init__(self, min_val=0, max_val=None, num_classes=9):
         '''
@@ -168,6 +168,7 @@ class Return_Outputs(Image_Processor):
         del image_features
         return tuple(inputs), tuple(outputs)
 
+
 class Resample_Image(Image_Processor):
     def __init__(self, image_rows=512, image_cols=512):
         self.image_rows = tf.constant(image_rows)
@@ -197,16 +198,29 @@ class Pad_Z_Images_w_Reflections(Image_Processor):
 
 
 class Ensure_Image_Proportions(Image_Processor):
-    def __init__(self, image_rows=512, image_cols=512):
+    def __init__(self, image_rows=512, image_cols=512, preserve_aspect_ratio=False):
         self.image_rows = tf.constant(image_rows)
         self.image_cols = tf.constant(image_cols)
+        self.preserve_aspect_ratio = preserve_aspect_ratio
 
     def parse(self, image_features, *args, **kwargs):
         assert len(image_features['image'].shape) > 2, 'You should do an expand_dimensions before this!'
-        image_features['image'] = tf.image.resize_with_crop_or_pad(image_features['image'], target_width=self.image_rows,
+        image_features['image'] = tf.image.resize(image_features['image'], (self.image_rows, self.image_cols),
+                                                  preserve_aspect_ratio=self.preserve_aspect_ratio)
+        image_features['image'] = tf.image.resize_with_crop_or_pad(image_features['image'],
+                                                                   target_width=self.image_rows,
                                                                    target_height=self.image_cols)
-        image_features['annotation'] = tf.image.resize_with_crop_or_pad(image_features['annotation'], target_width=self.image_rows,
-                                                                        target_height=self.image_cols)
+        annotation = image_features['annotation']
+        annotation = tf.image.resize(annotation, (self.image_rows, self.image_cols),
+                                     preserve_aspect_ratio=self.preserve_aspect_ratio)
+
+        annotation = tf.image.resize_with_crop_or_pad(annotation, target_width=self.image_rows,
+                                                      target_height=self.image_cols)
+        if annotation.shape[-1] != 1:
+            annotation = annotation[..., 1:] # remove background
+            background = tf.expand_dims(1-tf.reduce_sum(annotation,axis=-1), axis=-1)
+            annotation = tf.concat([background, annotation], axis=-1)
+        image_features['annotation'] = annotation
         return image_features
 
 
@@ -218,7 +232,7 @@ class Return_Add_Mult_Disease(Image_Processor):
     def parse(self, image_features, *args, **kwargs):
         annotation = image_features['annotation']
         if annotation.shape[-1] != 1:
-            mask = tf.expand_dims(tf.where(tf.reduce_sum(annotation[...,1:],axis=-1) > .99, 1, 0), axis=-1)
+            mask = tf.expand_dims(tf.where(tf.cast(tf.reduce_sum(annotation[...,1:],axis=-1),'float16') > .99, 1, 0), axis=-1)
             if self.on_disease:
                 annotation = tf.expand_dims(annotation[...,2], axis=-1) # Kick out everything except for the disease
                 image_features['annotation'] = annotation
@@ -232,6 +246,18 @@ class Return_Add_Mult_Disease(Image_Processor):
             image_features['image'] = tf.where(mask == 0, tf.cast(0, dtype=image_features['image'].dtype), image_features['image'])
         return image_features
 
+
+class Combine_Liver_Lobe_Segments(Image_Processor):
+    '''
+    Combines segments 5, 6, 7 and 8 into 5
+    '''
+    def parse(self, image_features, *args, **kwargs):
+        annotation = image_features['annotation']
+        output = [tf.expand_dims(annotation[...,i], axis=-1) for i in range(5)]
+        output.append(tf.expand_dims(tf.reduce_sum(annotation[...,5:],axis=-1),axis=-1))
+        output = tf.concat(output,axis=-1)
+        image_features['annotation'] = output
+        return image_features
 
 
 class Expand_Dimensions(Image_Processor):
@@ -458,6 +484,26 @@ class Threshold_Images(Image_Processor):
         image_features['image'] = tf.where(image_features['image'] < tf.cast(self.lower,dtype=image_features['image'].dtype),
                                            tf.cast(self.lower,dtype=image_features['image'].dtype), image_features['image'])
         image_features['image'] = tf.divide(image_features['image'],tf.cast(tf.subtract(self.upper,self.lower),dtype=image_features['image'].dtype))
+        return image_features
+
+
+class Resize_with_crop_pad(Image_Processor):
+    def __init__(self, image_rows=512, image_cols=512):
+        self.image_rows = tf.constant(image_rows)
+        self.image_cols = tf.constant(image_cols)
+
+    def parse(self, image_features, *args, **kwargs):
+        image_features['image'] = tf.image.resize_with_crop_or_pad(image_features['image'],
+                                                                   target_width=self.image_rows,
+                                                                   target_height=self.image_cols)
+        annotation = image_features['annotation']
+        annotation = tf.image.resize_with_crop_or_pad(annotation, target_width=self.image_rows,
+                                                      target_height=self.image_cols)
+        if annotation.shape[-1] != 1:
+            annotation = annotation[..., 1:] # remove background
+            background = tf.expand_dims(1-tf.reduce_sum(annotation,axis=-1), axis=-1)
+            annotation = tf.concat([background, annotation], axis=-1)
+        image_features['annotation'] = annotation
         return image_features
 
 
