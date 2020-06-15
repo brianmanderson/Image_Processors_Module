@@ -169,7 +169,7 @@ class Return_Outputs(Image_Processor):
         return tuple(inputs), tuple(outputs)
 
 
-class Resample_Image(Image_Processor):
+class Resize_Images(Image_Processor):
     def __init__(self, image_rows=512, image_cols=512):
         self.image_rows = tf.constant(image_rows)
         self.image_cols = tf.constant(image_cols)
