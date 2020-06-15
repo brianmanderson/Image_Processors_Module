@@ -653,6 +653,24 @@ class NormalizeParotidMR(Image_Processor):
         return input_features
 
 
+class Threshold_Images(Image_Processor):
+    def __init__(self, lower_bound=-np.inf, upper_bound=np.inf):
+        '''
+        :param lower_bound: Lower bound to threshold images, normally -3.55 if Normalize_Images is used previously
+        :param upper_bound: Upper bound to threshold images, normally 3.55 if Normalize_Images is used previously
+        '''
+        self.lower = lower_bound
+        self.upper = upper_bound
+
+    def parse(self, image_features, *args, **kwargs):
+        image = image_features['image']
+        image[image<self.lower] = self.lower
+        image[image>self.upper] = self.upper
+        image = image / (self.upper - self.lower)
+        image_features['image'] = image
+        return image_features
+
+
 class Normalize_to_annotation(Image_Processor):
     def __init__(self, annotation_value_list=None, mirror_max=False, lower_percentile=None, upper_percentile=None):
         '''
