@@ -7,6 +7,7 @@ from .Resample_Class.Resample_Class import Resample_Class_Object
 from scipy.ndimage.filters import gaussian_filter
 import tensorflow as tf
 import os, pickle
+from math import ceil, floor
 from .Plot_And_Scroll_Images.Plot_Scroll_Images import plot_scroll_Image, plt
 
 
@@ -806,7 +807,7 @@ class Box_Images(Image_Processor):
             annotation_cube = annotation[z_start:z_stop, r_start:r_stop, c_start:c_stop]
             img_shape = image_cube.shape
             pads = [min_images-img_shape[0], min_rows-img_shape[1], min_cols-img_shape[2]]
-            pads = [[i//2, round(i/2)] for i in pads]
+            pads = [[floor(i/2), ceil(i/2)] for i in pads]
             image_cube = np.pad(image_cube, pads, constant_values=np.min(image_cube))
             if len(annotation.shape) > 3:
                 pads += [[0, 0]]
