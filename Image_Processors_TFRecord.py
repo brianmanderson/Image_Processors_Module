@@ -785,26 +785,36 @@ class Box_Images(Image_Processor):
                                                                                    bounding_box_expansion=
                                                                                    remainders // 2 + 1)
             min_images, min_rows, min_cols = z_total + remainder_z, r_total + remainder_r, c_total + remainder_c
+            remainders = [0, 0, 0]
             if self.min_images is not None:
+                remainders[0] = max([0, self.min_images-min_images])
                 min_images = max([min_images, self.min_images])
             if self.min_rows is not None:
+                remainders[1] = max([0, self.min_rows - min_rows])
                 min_rows = max([min_rows, self.min_rows])
             if self.min_cols is not None:
+                remainders[2] = max([0, self.min_cols - min_cols])
                 min_cols = max([min_cols, self.min_cols])
-            out_images = np.ones([min_images, min_rows, min_cols], dtype=image.dtype) * np.min(image)
-            if len(annotation.shape) > 3:
-                out_annotations = np.zeros([min_images, min_rows, min_cols, annotation.shape[-1]], dtype=annotation.dtype)
-                out_annotations[..., 0] = 1
-            else:
-                out_annotations = np.zeros([min_images, min_rows, min_cols], dtype=annotation.dtype)
-            image_cube = image[z_start:z_start + min_images, r_start:r_start + min_rows, c_start:c_start + min_cols]
-            annotation_cube = annotation[z_start:z_start + min_images, r_start:r_start + min_rows,
-                              c_start:c_start + min_cols]
+            remainders = np.asarray(remainders)
+            z_start, z_stop, r_start, r_stop, c_start, c_stop = expand_box_indexes(z_start, z_stop, r_start, r_stop,
+                                                                                   c_start, c_stop,
+                                                                                   annotation_shape=
+                                                                                   annotation.shape,
+                                                                                   bounding_box_expansion=
+                                                                                   remainders // 2)
+            image_cube = image[z_start:z_stop, r_start:r_stop, c_start:c_stop]
+            annotation_cube = annotation[z_start:z_stop, r_start:r_stop, c_start:c_stop]
             img_shape = image_cube.shape
-            out_images[:img_shape[0], :img_shape[1], :img_shape[2], ...] = image_cube
-            out_annotations[:img_shape[0], :img_shape[1], :img_shape[2], ...] = annotation_cube
-            input_features['annotation'] = out_annotations
-            input_features['image'] = out_images
+            pads = [min_images-img_shape[0], min_rows-img_shape[1], min_cols-img_shape[2]]
+            pads = [[i//2, round(i/2)] for i in pads]
+            image_cube = np.pad(image_cube, pads)
+            if len(annotation.shape) > 3:
+                pads += [[0, 0]]
+            annotation_cube = np.pad(annotation_cube, pads)
+            if len(annotation.shape) > 3:
+                annotation_cube[...,0] = 1-np.sum(annotation_cube[...,1:])
+            input_features['annotation'] = annotation_cube
+            input_features['image'] = image_cube
         return input_features
 
 
