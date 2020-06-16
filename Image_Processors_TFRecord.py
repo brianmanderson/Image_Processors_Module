@@ -807,7 +807,7 @@ class Box_Images(Image_Processor):
             img_shape = image_cube.shape
             pads = [min_images-img_shape[0], min_rows-img_shape[1], min_cols-img_shape[2]]
             pads = [[i//2, round(i/2)] for i in pads]
-            image_cube = np.pad(image_cube, pads)
+            image_cube = np.pad(image_cube, pads, constant_values=np.min(image_cube))
             if len(annotation.shape) > 3:
                 pads += [[0, 0]]
             annotation_cube = np.pad(annotation_cube, pads)
