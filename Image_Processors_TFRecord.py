@@ -516,7 +516,7 @@ class Split_Disease_Into_Cubes(Image_Processor):
                                                                                        annotation_shape=
                                                                                        annotation_base.shape,
                                                                                        bounding_box_expansion=
-                                                                                       remainders//2+1)
+                                                                                       remainders)
                 image = image_base[z_start:z_stop, r_start:r_stop, c_start:c_stop]
                 annotation = annotation_base[z_start:z_stop, r_start:r_stop, c_start:c_stop]
 
@@ -725,12 +725,12 @@ class Normalize_to_annotation(Image_Processor):
 
 
 def expand_box_indexes(z_start, z_stop, r_start, r_stop, c_start, c_stop, annotation_shape, bounding_box_expansion):
-    z_start = max([0, z_start - bounding_box_expansion[0]])
-    z_stop = min([annotation_shape[0], z_stop + bounding_box_expansion[0]])
-    r_start = max([0, r_start - bounding_box_expansion[1]])
-    r_stop = min([annotation_shape[1], r_stop + bounding_box_expansion[1]])
-    c_start = max([0, c_start - bounding_box_expansion[2]])
-    c_stop = min([annotation_shape[2], c_stop + bounding_box_expansion[2]])
+    z_start = max([0, z_start - floor(bounding_box_expansion[0]/2)])
+    z_stop = min([annotation_shape[0], z_stop + ceil(bounding_box_expansion[0]/2)])
+    r_start = max([0, r_start - floor(bounding_box_expansion[1]/2)])
+    r_stop = min([annotation_shape[1], r_stop + ceil(bounding_box_expansion[1]/2)])
+    c_start = max([0, c_start - floor(bounding_box_expansion[2]/2)])
+    c_stop = min([annotation_shape[2], c_stop + ceil(bounding_box_expansion[2]/2)])
     return z_start, z_stop, r_start, r_stop, c_start, c_stop
 
 
@@ -784,7 +784,7 @@ class Box_Images(Image_Processor):
                                                                                    annotation_shape=
                                                                                    annotation.shape,
                                                                                    bounding_box_expansion=
-                                                                                   remainders // 2 + 1)
+                                                                                   remainders)
             min_images, min_rows, min_cols = z_total + remainder_z, r_total + remainder_r, c_total + remainder_c
             remainders = [0, 0, 0]
             if self.min_images is not None:
@@ -802,12 +802,12 @@ class Box_Images(Image_Processor):
                                                                                    annotation_shape=
                                                                                    annotation.shape,
                                                                                    bounding_box_expansion=
-                                                                                   remainders // 2)
+                                                                                   remainders)
             image_cube = image[z_start:z_stop, r_start:r_stop, c_start:c_stop]
             annotation_cube = annotation[z_start:z_stop, r_start:r_stop, c_start:c_stop]
             img_shape = image_cube.shape
             pads = [min_images-img_shape[0], min_rows-img_shape[1], min_cols-img_shape[2]]
-            pads = [[floor(i/2), ceil(i/2)] for i in pads]
+            pads = [[max([0,floor(i/2)]), max([0,ceil(i/2)])] for i in pads]
             image_cube = np.pad(image_cube, pads, constant_values=np.min(image_cube))
             if len(annotation.shape) > 3:
                 pads += [[0, 0]]
