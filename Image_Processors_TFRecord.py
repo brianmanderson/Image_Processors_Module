@@ -252,7 +252,10 @@ class Gaussian_Uncertainty(Image_Processor):
             num_classes = annotations.shape[-1]
         for i in range(1,num_classes):
             sigma = self.sigma[i-1]
-            sigma = [sigma/spacing[0], sigma/spacing[1], sigma/spacing[2]]
+            if type(sigma) is not list:
+                sigma = [sigma/spacing[i] for i in range(3)]
+            else:
+                sigma = [sigma[i]/spacing[i] for i in range(3)]
             annotation = annotations[...,i]
             filtered[...,i] = gaussian_filter(annotation,sigma=sigma,mode='constant')
         filtered[annotations[...,0] == 1] = 0
@@ -813,7 +816,7 @@ class Box_Images(Image_Processor):
                 pads += [[0, 0]]
             annotation_cube = np.pad(annotation_cube, pads)
             if len(annotation.shape) > 3:
-                annotation_cube[...,0] = 1-np.sum(annotation_cube[...,1:])
+                annotation_cube[...,0] = 1-np.sum(annotation_cube[...,1:],axis=-1)
             input_features['annotation'] = annotation_cube
             input_features['image'] = image_cube
         return input_features
