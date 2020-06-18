@@ -487,8 +487,19 @@ class Threshold_Images(Image_Processor):
         return image_features
 
 
+class Add_Constant(Image_Processor):
+    def __init__(self, value):
+        self.value = tf.constant(value)
+
+    def parse(self, image_features, *args, **kwargs):
+        i = image_features['image']
+        image_features['image'] = tf.add(i, tf.cast(self.value,i.dtype))
+        return image_features
+
+
 class Resize_with_crop_pad(Image_Processor):
     def __init__(self, image_rows=512, image_cols=512):
+        print("Be careful.. this can severly slow down data retrieval, best to do these things while making the record")
         self.image_rows = tf.constant(image_rows)
         self.image_cols = tf.constant(image_cols)
 
