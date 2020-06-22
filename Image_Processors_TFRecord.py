@@ -235,7 +235,7 @@ class Remove_Lowest_Probabilty_Structure(object):
 class Gaussian_Uncertainty(Image_Processor):
     def __init__(self, sigma=None):
         '''
-        :param sigma: Desired sigma, in mm, in z, x, y direction
+        :param sigma: Desired sigma, in mm, in x, y, z direction
         '''
         self.sigma = sigma
 
@@ -257,6 +257,9 @@ class Gaussian_Uncertainty(Image_Processor):
             else:
                 sigma = [sigma[i]/spacing[i] for i in range(3)]
             annotation = annotations[...,i]
+            if sigma[-1] != np.min(sigma):
+                print('Make sure you put this in as x, y, z. Not z, x, y!')
+            sigma = [sigma[-1], sigma[0], sigma[1]] # now make it match image shape [z, x, y]
             filtered[...,i] = gaussian_filter(annotation,sigma=sigma,mode='constant')
         filtered[annotations[...,0] == 1] = 0
         filtered[...,0] = annotations[...,0]
