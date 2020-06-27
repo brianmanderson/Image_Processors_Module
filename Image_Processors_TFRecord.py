@@ -628,7 +628,9 @@ class Distribute_into_2D(Image_Processor):
         annotation = input_features['annotation']
         image_path = input_features['image_path']
         spacing = input_features['spacing']
-        z_images_base, rows, cols = annotation.shape
+        z_images_base, rows, cols = annotation.shape[:3]
+        if len(annotation.shape) > 3:
+            input_features['num_classes'] = annotation.shape[-1]
         for index in range(z_images_base):
             image_features = OrderedDict()
             image_features['image_path'] = image_path
@@ -637,6 +639,9 @@ class Distribute_into_2D(Image_Processor):
             image_features['rows'] = rows
             image_features['cols'] = cols
             image_features['spacing'] = spacing[:-1]
+            for key in input_features.keys():
+                if key not in image_features.keys():
+                    image_features[key] = input_features[key] # Pass along all other keys.. be careful
             out_features['Image_{}'.format(index)] = image_features
         input_features = out_features
         return input_features
