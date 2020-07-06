@@ -211,12 +211,16 @@ class Ensure_Image_Proportions(Image_Processor):
                                                                    target_width=self.image_rows,
                                                                    target_height=self.image_cols)
         annotation = image_features['annotation']
+        method = 'bilinear'
+        if annotation.dtype.name.find('int') != -1:
+            method = 'nearest'
         annotation = tf.image.resize(annotation, (self.image_rows, self.image_cols),
-                                     preserve_aspect_ratio=self.preserve_aspect_ratio)
-
+                                     preserve_aspect_ratio=self.preserve_aspect_ratio, method=method)
         annotation = tf.image.resize_with_crop_or_pad(annotation, target_width=self.image_rows,
                                                       target_height=self.image_cols)
         if annotation.shape[-1] != 1:
+            if method == 'bilinear':
+                annotation = tf.where(annotation > .5, 1, 0)
             annotation = annotation[..., 1:] # remove background
             background = tf.expand_dims(1-tf.reduce_sum(annotation,axis=-1), axis=-1)
             annotation = tf.concat([background, annotation], axis=-1)
