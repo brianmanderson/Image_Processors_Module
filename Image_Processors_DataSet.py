@@ -226,6 +226,14 @@ class Ensure_Image_Proportions(Image_Processor):
         return image_features
 
 
+class Ensure_Annotation_Range(Image_Processor):
+    def parse(self, image_features, *args, **kwargs):
+        annotation = image_features['annotation']
+        annotation = tf.divide(annotation, tf.expand_dims(tf.reduce_sum(annotation, axis=-1), axis=-1))
+        image_features['annotation'] = annotation
+        return image_features
+
+
 class Return_Add_Mult_Disease(Image_Processor):
     def __init__(self, on_disease=True, change_background=False, cast_to_min=False):
         self.on_disease = on_disease
