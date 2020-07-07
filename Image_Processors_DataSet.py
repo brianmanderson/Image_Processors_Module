@@ -219,8 +219,6 @@ class Ensure_Image_Proportions(Image_Processor):
         annotation = tf.image.resize_with_crop_or_pad(annotation, target_width=self.image_rows,
                                                       target_height=self.image_cols)
         if annotation.shape[-1] != 1:
-            if method == 'bilinear':
-                annotation = tf.where(annotation > .5, 1, 0)
             annotation = annotation[..., 1:] # remove background
             background = tf.expand_dims(1-tf.reduce_sum(annotation,axis=-1), axis=-1)
             annotation = tf.concat([background, annotation], axis=-1)
