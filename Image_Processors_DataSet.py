@@ -519,11 +519,11 @@ class Resize_with_crop_pad(Image_Processor):
 
     def parse(self, image_features, *args, **kwargs):
         image_features['image'] = tf.image.resize_with_crop_or_pad(image_features['image'],
-                                                                   target_width=self.image_rows,
-                                                                   target_height=self.image_cols)
+                                                                   target_width=self.image_cols,
+                                                                   target_height=self.image_rows)
         annotation = image_features['annotation']
-        annotation = tf.image.resize_with_crop_or_pad(annotation, target_width=self.image_rows,
-                                                      target_height=self.image_cols)
+        annotation = tf.image.resize_with_crop_or_pad(annotation, target_width=self.image_cols,
+                                                      target_height=self.image_rows)
         if annotation.shape[-1] != 1:
             annotation = annotation[..., 1:] # remove background
             background = tf.expand_dims(1-tf.reduce_sum(annotation,axis=-1), axis=-1)
