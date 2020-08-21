@@ -7,6 +7,7 @@ from .Resample_Class.Resample_Class import Resample_Class_Object
 from scipy.ndimage.filters import gaussian_filter
 import tensorflow as tf
 import os, pickle
+from math import ceil, floor
 from .Plot_And_Scroll_Images.Plot_Scroll_Images import plot_scroll_Image, plt
 
 
@@ -238,7 +239,7 @@ class Remove_Lowest_Probabilty_Structure(object):
 class Gaussian_Uncertainty(Image_Processor):
     def __init__(self, sigma=None):
         '''
-        :param sigma: Desired sigma, in mm, in z, x, y direction
+        :param sigma: Desired sigma, in mm, in x, y, z direction
         '''
         self.sigma = sigma
 
@@ -255,8 +256,14 @@ class Gaussian_Uncertainty(Image_Processor):
             num_classes = annotations.shape[-1]
         for i in range(1,num_classes):
             sigma = self.sigma[i-1]
-            sigma = [sigma/spacing[0], sigma/spacing[1], sigma/spacing[2]]
+            if type(sigma) is not list:
+                sigma = [sigma/spacing[i] for i in range(3)]
+            else:
+                sigma = [sigma[i]/spacing[i] for i in range(3)]
             annotation = annotations[...,i]
+            if sigma[-1] != np.min(sigma):
+                print('Make sure you put this in as x, y, z. Not z, x, y!')
+            sigma = [sigma[-1], sigma[0], sigma[1]] # now make it match image shape [z, x, y]
             filtered[...,i] = gaussian_filter(annotation,sigma=sigma,mode='constant')
         filtered[annotations[...,0] == 1] = 0
         filtered[...,0] = annotations[...,0]
@@ -519,7 +526,7 @@ class Split_Disease_Into_Cubes(Image_Processor):
                                                                                        annotation_shape=
                                                                                        annotation_base.shape,
                                                                                        bounding_box_expansion=
-                                                                                       remainders//2+1)
+                                                                                       remainders)
                 image = image_base[z_start:z_stop, r_start:r_stop, c_start:c_stop]
                 annotation = annotation_base[z_start:z_stop, r_start:r_stop, c_start:c_stop]
 
@@ -625,7 +632,9 @@ class Distribute_into_2D(Image_Processor):
         annotation = input_features['annotation']
         image_path = input_features['image_path']
         spacing = input_features['spacing']
-        z_images_base, rows, cols = annotation.shape
+        z_images_base, rows, cols = annotation.shape[:3]
+        if len(annotation.shape) > 3:
+            input_features['num_classes'] = annotation.shape[-1]
         for index in range(z_images_base):
             image_features = OrderedDict()
             image_features['image_path'] = image_path
@@ -634,6 +643,9 @@ class Distribute_into_2D(Image_Processor):
             image_features['rows'] = rows
             image_features['cols'] = cols
             image_features['spacing'] = spacing[:-1]
+            for key in input_features.keys():
+                if key not in image_features.keys():
+                    image_features[key] = input_features[key] # Pass along all other keys.. be careful
             out_features['Image_{}'.format(index)] = image_features
         input_features = out_features
         return input_features
@@ -655,6 +667,24 @@ class NormalizeParotidMR(Image_Processor):
         images = (images - mean_val)/std_val
         input_features['image'] = images
         return input_features
+
+
+class Threshold_Images(Image_Processor):
+    def __init__(self, lower_bound=-np.inf, upper_bound=np.inf):
+        '''
+        :param lower_bound: Lower bound to threshold images, normally -3.55 if Normalize_Images is used previously
+        :param upper_bound: Upper bound to threshold images, normally 3.55 if Normalize_Images is used previously
+        '''
+        self.lower = lower_bound
+        self.upper = upper_bound
+
+    def parse(self, image_features, *args, **kwargs):
+        image = image_features['image']
+        image[image<self.lower] = self.lower
+        image[image>self.upper] = self.upper
+        image = image / (self.upper - self.lower)
+        image_features['image'] = image
+        return image_features
 
 
 class Normalize_to_annotation(Image_Processor):
@@ -710,12 +740,12 @@ class Normalize_to_annotation(Image_Processor):
 
 
 def expand_box_indexes(z_start, z_stop, r_start, r_stop, c_start, c_stop, annotation_shape, bounding_box_expansion):
-    z_start = max([0, z_start - bounding_box_expansion[0]])
-    z_stop = min([annotation_shape[0], z_stop + bounding_box_expansion[0]])
-    r_start = max([0, r_start - bounding_box_expansion[1]])
-    r_stop = min([annotation_shape[1], r_stop + bounding_box_expansion[1]])
-    c_start = max([0, c_start - bounding_box_expansion[2]])
-    c_stop = min([annotation_shape[2], c_stop + bounding_box_expansion[2]])
+    z_start = max([0, z_start - floor(bounding_box_expansion[0]/2)])
+    z_stop = min([annotation_shape[0], z_stop + ceil(bounding_box_expansion[0]/2)])
+    r_start = max([0, r_start - floor(bounding_box_expansion[1]/2)])
+    r_stop = min([annotation_shape[1], r_stop + ceil(bounding_box_expansion[1]/2)])
+    c_start = max([0, c_start - floor(bounding_box_expansion[2]/2)])
+    c_stop = min([annotation_shape[2], c_stop + ceil(bounding_box_expansion[2]/2)])
     return z_start, z_stop, r_start, r_stop, c_start, c_stop
 
 
@@ -769,28 +799,38 @@ class Box_Images(Image_Processor):
                                                                                    annotation_shape=
                                                                                    annotation.shape,
                                                                                    bounding_box_expansion=
-                                                                                   remainders // 2 + 1)
+                                                                                   remainders)
             min_images, min_rows, min_cols = z_total + remainder_z, r_total + remainder_r, c_total + remainder_c
+            remainders = [0, 0, 0]
             if self.min_images is not None:
+                remainders[0] = max([0, self.min_images-min_images])
                 min_images = max([min_images, self.min_images])
             if self.min_rows is not None:
+                remainders[1] = max([0, self.min_rows - min_rows])
                 min_rows = max([min_rows, self.min_rows])
             if self.min_cols is not None:
+                remainders[2] = max([0, self.min_cols - min_cols])
                 min_cols = max([min_cols, self.min_cols])
-            out_images = np.ones([min_images, min_rows, min_cols], dtype=image.dtype) * np.min(image)
-            if len(annotation.shape) > 3:
-                out_annotations = np.zeros([min_images, min_rows, min_cols, annotation.shape[-1]], dtype=annotation.dtype)
-                out_annotations[..., 0] = 1
-            else:
-                out_annotations = np.zeros([min_images, min_rows, min_cols], dtype=annotation.dtype)
-            image_cube = image[z_start:z_start + min_images, r_start:r_start + min_rows, c_start:c_start + min_cols]
-            annotation_cube = annotation[z_start:z_start + min_images, r_start:r_start + min_rows,
-                              c_start:c_start + min_cols]
+            remainders = np.asarray(remainders)
+            z_start, z_stop, r_start, r_stop, c_start, c_stop = expand_box_indexes(z_start, z_stop, r_start, r_stop,
+                                                                                   c_start, c_stop,
+                                                                                   annotation_shape=
+                                                                                   annotation.shape,
+                                                                                   bounding_box_expansion=
+                                                                                   remainders)
+            image_cube = image[z_start:z_stop, r_start:r_stop, c_start:c_stop]
+            annotation_cube = annotation[z_start:z_stop, r_start:r_stop, c_start:c_stop]
             img_shape = image_cube.shape
-            out_images[:img_shape[0], :img_shape[1], :img_shape[2], ...] = image_cube
-            out_annotations[:img_shape[0], :img_shape[1], :img_shape[2], ...] = annotation_cube
-            input_features['annotation'] = out_annotations
-            input_features['image'] = out_images
+            pads = [min_images-img_shape[0], min_rows-img_shape[1], min_cols-img_shape[2]]
+            pads = [[max([0,floor(i/2)]), max([0,ceil(i/2)])] for i in pads]
+            image_cube = np.pad(image_cube, pads, constant_values=np.min(image_cube))
+            if len(annotation.shape) > 3:
+                pads += [[0, 0]]
+            annotation_cube = np.pad(annotation_cube, pads)
+            if len(annotation.shape) > 3:
+                annotation_cube[...,0] = 1-np.sum(annotation_cube[...,1:],axis=-1)
+            input_features['annotation'] = annotation_cube
+            input_features['image'] = image_cube
         return input_features
 
 

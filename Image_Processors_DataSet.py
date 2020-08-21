@@ -169,7 +169,7 @@ class Return_Outputs(Image_Processor):
         return tuple(inputs), tuple(outputs)
 
 
-class Resample_Image(Image_Processor):
+class Resize_Images(Image_Processor):
     def __init__(self, image_rows=512, image_cols=512):
         self.image_rows = tf.constant(image_rows)
         self.image_cols = tf.constant(image_cols)
@@ -208,14 +208,16 @@ class Ensure_Image_Proportions(Image_Processor):
         image_features['image'] = tf.image.resize(image_features['image'], (self.image_rows, self.image_cols),
                                                   preserve_aspect_ratio=self.preserve_aspect_ratio)
         image_features['image'] = tf.image.resize_with_crop_or_pad(image_features['image'],
-                                                                   target_width=self.image_rows,
-                                                                   target_height=self.image_cols)
+                                                                   target_width=self.image_cols,
+                                                                   target_height=self.image_rows)
         annotation = image_features['annotation']
+        method = 'bilinear'
+        if annotation.dtype.name.find('int') != -1:
+            method = 'nearest'
         annotation = tf.image.resize(annotation, (self.image_rows, self.image_cols),
-                                     preserve_aspect_ratio=self.preserve_aspect_ratio)
-
-        annotation = tf.image.resize_with_crop_or_pad(annotation, target_width=self.image_rows,
-                                                      target_height=self.image_cols)
+                                     preserve_aspect_ratio=self.preserve_aspect_ratio, method=method)
+        annotation = tf.image.resize_with_crop_or_pad(annotation, target_width=self.image_cols,
+                                                      target_height=self.image_rows)
         if annotation.shape[-1] != 1:
             annotation = annotation[..., 1:] # remove background
             background = tf.expand_dims(1-tf.reduce_sum(annotation,axis=-1), axis=-1)
@@ -224,9 +226,18 @@ class Ensure_Image_Proportions(Image_Processor):
         return image_features
 
 
+class Ensure_Annotation_Range(Image_Processor):
+    def parse(self, image_features, *args, **kwargs):
+        annotation = image_features['annotation']
+        annotation = tf.divide(annotation, tf.expand_dims(tf.reduce_sum(annotation, axis=-1), axis=-1))
+        image_features['annotation'] = annotation
+        return image_features
+
+
 class Return_Add_Mult_Disease(Image_Processor):
-    def __init__(self, on_disease=True, change_background=False):
+    def __init__(self, on_disease=True, change_background=False, cast_to_min=False):
         self.on_disease = on_disease
+        self.cast_to_min = cast_to_min
         self.change_background = change_background
 
     def parse(self, image_features, *args, **kwargs):
@@ -243,7 +254,10 @@ class Return_Add_Mult_Disease(Image_Processor):
                 image_features['annotation'] = annotation
         image_features['mask'] = mask
         if self.change_background:
-            image_features['image'] = tf.where(mask == 0, tf.cast(0, dtype=image_features['image'].dtype), image_features['image'])
+            value = 0
+            if self.cast_to_min:
+                value = tf.reduce_min(image_features['image'])
+            image_features['image'] = tf.where(mask == 0, tf.cast(value, dtype=image_features['image'].dtype), image_features['image'])
         return image_features
 
 
@@ -487,18 +501,29 @@ class Threshold_Images(Image_Processor):
         return image_features
 
 
+class Add_Constant(Image_Processor):
+    def __init__(self, value):
+        self.value = tf.constant(value)
+
+    def parse(self, image_features, *args, **kwargs):
+        i = image_features['image']
+        image_features['image'] = tf.add(i, tf.cast(self.value,i.dtype))
+        return image_features
+
+
 class Resize_with_crop_pad(Image_Processor):
     def __init__(self, image_rows=512, image_cols=512):
+        print("Be careful.. this can severly slow down data retrieval, best to do these things while making the record")
         self.image_rows = tf.constant(image_rows)
         self.image_cols = tf.constant(image_cols)
 
     def parse(self, image_features, *args, **kwargs):
         image_features['image'] = tf.image.resize_with_crop_or_pad(image_features['image'],
-                                                                   target_width=self.image_rows,
-                                                                   target_height=self.image_cols)
+                                                                   target_width=self.image_cols,
+                                                                   target_height=self.image_rows)
         annotation = image_features['annotation']
-        annotation = tf.image.resize_with_crop_or_pad(annotation, target_width=self.image_rows,
-                                                      target_height=self.image_cols)
+        annotation = tf.image.resize_with_crop_or_pad(annotation, target_width=self.image_cols,
+                                                      target_height=self.image_rows)
         if annotation.shape[-1] != 1:
             annotation = annotation[..., 1:] # remove background
             background = tf.expand_dims(1-tf.reduce_sum(annotation,axis=-1), axis=-1)
