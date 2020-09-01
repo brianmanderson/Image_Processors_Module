@@ -130,7 +130,6 @@ def get_features(image_path, annotation_path, image_processors=None, record_writ
     features['annotation_path'] = annotation_path
     if image_processors is not None:
         for image_processor in image_processors:
-            print(image_processor)
             features, _ = down_dictionary(features, OrderedDict(), 0)
             if verbose:
                 print(image_processor)
