@@ -1,4 +1,5 @@
 __author__ = 'Brian M Anderson'
+
 # Created on 4/8/2020
 import tensorflow as tf
 import numpy as np
@@ -63,8 +64,8 @@ class Decode_Images_Annotations(Image_Processor):
             if 'dose' in self.d_type_dict:
                 dose_dtype = self.d_type_dict['dose']
             image_features['dose'] = tf.reshape(tf.io.decode_raw(image_features['dose'], out_type=dose_dtype),
-                                                 (image_features['dose_images'], image_features['dose_rows'],
-                                                  image_features['dose_cols']))
+                                                (image_features['dose_images'], image_features['dose_rows'],
+                                                 image_features['dose_cols']))
         return image_features
 
 
@@ -82,7 +83,7 @@ class Random_Noise(Image_Processor):
             if key in image_features:
                 data = image_features[key]
                 dtype = data.dtype
-                data = tf.cast(data,'float32')
+                data = tf.cast(data, 'float32')
                 data += tf.random.uniform(shape=[], minval=0.0, maxval=self.max_noise,
                                           dtype='float32') * tf.random.normal(tf.shape(image_features['image']),
                                                                               mean=0.0, stddev=1.0, dtype='float32')
@@ -96,7 +97,7 @@ class Combine_image_RT_Dose(Image_Processor):
         image = input_features['image']
         rt = input_features['annotation']
         dose = input_features['dose']
-        output = tf.concat([image,rt,dose],axis=-1)
+        output = tf.concat([image, rt, dose], axis=-1)
         input_features['combined'] = output
         return input_features
 
@@ -109,15 +110,15 @@ class Fuzzy_Segment_Liver_Lobes(Image_Processor):
         self.min_val = min_val
         self.max_val = max_val
         self.num_classes = num_classes
-    
+
     def parse(self, image_features, *args, **kwargs):
         if type(image_features) is dict:
             annotation = image_features['annotation']
         else:
             annotation = image_features[-1][-1]
-        annotation = tf.cast(annotation,dtype=tf.dtypes.float32)
-        filter_size = tf.random.uniform([2],minval=self.min_val, maxval=self.max_val)
-        filter_shape = tuple(tf.cast(tf.divide(filter_size,image_features['spacing'][:2]), dtype=tf.dtypes.float32))
+        annotation = tf.cast(annotation, dtype=tf.dtypes.float32)
+        filter_size = tf.random.uniform([2], minval=self.min_val, maxval=self.max_val)
+        filter_shape = tuple(tf.cast(tf.divide(filter_size, image_features['spacing'][:2]), dtype=tf.dtypes.float32))
 
         # Explicitly pad the image
 
@@ -137,7 +138,7 @@ class Fuzzy_Segment_Liver_Lobes(Image_Processor):
 
         annotation = tf.nn.depthwise_conv2d(annotation, kernel, strides=(1, 1, 1, 1), padding="VALID")
         annotation = tf.divide(annotation, area)
-        annotation = tf.divide(annotation, tf.expand_dims(tf.reduce_sum(annotation, axis=-1),axis=-1))
+        annotation = tf.divide(annotation, tf.expand_dims(tf.reduce_sum(annotation, axis=-1), axis=-1))
         image_features['annotation'] = annotation
         return image_features
 
@@ -147,7 +148,8 @@ class Return_Outputs(Image_Processor):
     No image processors should occur after this, this will turn your dictionary into a set of tensors, usually
     image, annotation
     '''
-    def __init__(self, wanted_keys_dict={'inputs':['image'],'outputs':['annotation']}):
+
+    def __init__(self, wanted_keys_dict={'inputs': ['image'], 'outputs': ['annotation']}):
         assert type(wanted_keys_dict) is dict, 'You need to pass a dictionary to Return_Outputs in the form of ' \
                                                '{"inputs":["image"],"outputs":["annotation"]}, etc.'
         self.wanted_keys_dict = wanted_keys_dict
@@ -178,7 +180,8 @@ class Resize_Images(Image_Processor):
         assert len(image_features['image'].shape) > 2, 'You should do an expand_dimensions before this!'
         image_features['image'] = tf.image.resize(image_features['image'], size=(self.image_rows, self.image_cols),
                                                   method='bilinear', preserve_aspect_ratio=True)
-        image_features['annotation'] = tf.image.resize(image_features['annotation'], size=(self.image_rows, self.image_cols),
+        image_features['annotation'] = tf.image.resize(image_features['annotation'],
+                                                       size=(self.image_rows, self.image_cols),
                                                        method='nearest', preserve_aspect_ratio=True)
         return image_features
 
@@ -187,13 +190,16 @@ class Pad_Z_Images_w_Reflections(Image_Processor):
     '''
     This will not work for parallelized.. because the z dimension is None unknown to start
     '''
+
     def __init__(self, z_images=32):
         self.z_images = tf.constant(z_images)
 
     def parse(self, image_features, *args, **kwargs):
-        dif = tf.subtract(self.z_images,image_features['image'].shape[0])
-        image_features['image'] = tf.concat([image_features['image'],tf.reverse(image_features['image'], axis=[0])[:dif]],axis=0)
-        image_features['annotation'] = tf.concat([image_features['annotation'],tf.reverse(image_features['annotation'], axis=[0])[:dif]],axis=0)
+        dif = tf.subtract(self.z_images, image_features['image'].shape[0])
+        image_features['image'] = tf.concat(
+            [image_features['image'], tf.reverse(image_features['image'], axis=[0])[:dif]], axis=0)
+        image_features['annotation'] = tf.concat(
+            [image_features['annotation'], tf.reverse(image_features['annotation'], axis=[0])[:dif]], axis=0)
         return image_features
 
 
@@ -219,8 +225,8 @@ class Ensure_Image_Proportions(Image_Processor):
         annotation = tf.image.resize_with_crop_or_pad(annotation, target_width=self.image_cols,
                                                       target_height=self.image_rows)
         if annotation.shape[-1] != 1:
-            annotation = annotation[..., 1:] # remove background
-            background = tf.expand_dims(1-tf.reduce_sum(annotation,axis=-1), axis=-1)
+            annotation = annotation[..., 1:]  # remove background
+            background = tf.expand_dims(1 - tf.reduce_sum(annotation, axis=-1), axis=-1)
             annotation = tf.concat([background, annotation], axis=-1)
         image_features['annotation'] = annotation
         return image_features
@@ -243,9 +249,10 @@ class Return_Add_Mult_Disease(Image_Processor):
     def parse(self, image_features, *args, **kwargs):
         annotation = image_features['annotation']
         if annotation.shape[-1] != 1:
-            mask = tf.expand_dims(tf.where(tf.cast(tf.reduce_sum(annotation[...,1:],axis=-1),'float16') > .99, 1, 0), axis=-1)
+            mask = tf.expand_dims(tf.where(tf.cast(tf.reduce_sum(annotation[..., 1:], axis=-1), 'float16') > .99, 1, 0),
+                                  axis=-1)
             if self.on_disease:
-                annotation = tf.expand_dims(annotation[...,2], axis=-1) # Kick out everything except for the disease
+                annotation = tf.expand_dims(annotation[..., 2], axis=-1)  # Kick out everything except for the disease
                 image_features['annotation'] = annotation
         else:
             mask = tf.where(annotation > 0, 1, 0)
@@ -257,7 +264,8 @@ class Return_Add_Mult_Disease(Image_Processor):
             value = 0
             if self.cast_to_min:
                 value = tf.reduce_min(image_features['image'])
-            image_features['image'] = tf.where(mask == 0, tf.cast(value, dtype=image_features['image'].dtype), image_features['image'])
+            image_features['image'] = tf.where(mask == 0, tf.cast(value, dtype=image_features['image'].dtype),
+                                               image_features['image'])
         return image_features
 
 
@@ -265,11 +273,12 @@ class Combine_Liver_Lobe_Segments(Image_Processor):
     '''
     Combines segments 5, 6, 7 and 8 into 5
     '''
+
     def parse(self, image_features, *args, **kwargs):
         annotation = image_features['annotation']
-        output = [tf.expand_dims(annotation[...,i], axis=-1) for i in range(5)]
-        output.append(tf.expand_dims(tf.reduce_sum(annotation[...,5:],axis=-1),axis=-1))
-        output = tf.concat(output,axis=-1)
+        output = [tf.expand_dims(annotation[..., i], axis=-1) for i in range(5)]
+        output.append(tf.expand_dims(tf.reduce_sum(annotation[..., 5:], axis=-1), axis=-1))
+        output = tf.concat(output, axis=-1)
         image_features['annotation'] = output
         return image_features
 
@@ -315,7 +324,7 @@ class Return_Lung(Image_Processor):
 
     def parse(self, image_features, *args, **kwargs):
         if self.dual_output:
-            image_features['lung'] = tf.cast(image_features['annotation'] > 0,dtype='float32')
+            image_features['lung'] = tf.cast(image_features['annotation'] > 0, dtype='float32')
         return image_features
 
 
@@ -328,12 +337,12 @@ class Normalize_Images(Image_Processor):
         self.mean_val, self.std_val = tf.constant(mean_val, dtype='float32'), tf.constant(std_val, dtype='float32')
 
     def parse(self, image_features, *args, **kwargs):
-        image_features['image'] = (image_features['image'] - self.mean_val)/self.std_val
+        image_features['image'] = (image_features['image'] - self.mean_val) / self.std_val
         return image_features
 
 
 class Combined_Annotations(Image_Processor):
-    def __init__(self, values=[tf.constant(1, dtype='int8'),tf.constant(2, dtype='int8')]):
+    def __init__(self, values=[tf.constant(1, dtype='int8'), tf.constant(2, dtype='int8')]):
         self.values = values
 
     def parse(self, image_features, *args, **kwargs):
@@ -425,7 +434,8 @@ def _random_flip(image, flip_index, seed, scope_name, flip_3D_together=False):
 
 
 class Flip_Images(Image_Processor):
-    def __init__(self, keys=['image','annotation'], flip_lr=True, flip_up_down=True, flip_z=False, flip_3D_together=False):
+    def __init__(self, keys=['image', 'annotation'], flip_lr=True, flip_up_down=True, flip_z=False,
+                 flip_3D_together=False):
         self.flip_lr = flip_lr
         self.flip_z = flip_z
         self.flip_up_down = flip_up_down
@@ -494,10 +504,12 @@ class Threshold_Images(Image_Processor):
         self.divide = divide
 
     def parse(self, image_features, *args, **kwargs):
-        image_features['image'] = tf.where(image_features['image'] > tf.cast(self.upper, dtype=image_features['image'].dtype),
-                                           tf.cast(self.upper, dtype=image_features['image'].dtype), image_features['image'])
-        image_features['image'] = tf.where(image_features['image'] < tf.cast(self.lower,dtype=image_features['image'].dtype),
-                                           tf.cast(self.lower,dtype=image_features['image'].dtype), image_features['image'])
+        image_features['image'] = tf.where(
+            image_features['image'] > tf.cast(self.upper, dtype=image_features['image'].dtype),
+            tf.cast(self.upper, dtype=image_features['image'].dtype), image_features['image'])
+        image_features['image'] = tf.where(
+            image_features['image'] < tf.cast(self.lower, dtype=image_features['image'].dtype),
+            tf.cast(self.lower, dtype=image_features['image'].dtype), image_features['image'])
         if self.divide:
             image_features['image'] = tf.divide(image_features['image'], tf.cast(tf.subtract(self.upper, self.lower),
                                                                                  dtype=image_features['image'].dtype))
@@ -510,7 +522,7 @@ class Add_Constant(Image_Processor):
 
     def parse(self, image_features, *args, **kwargs):
         i = image_features['image']
-        image_features['image'] = tf.add(i, tf.cast(self.value,i.dtype))
+        image_features['image'] = tf.add(i, tf.cast(self.value, i.dtype))
         return image_features
 
 
@@ -528,8 +540,8 @@ class Resize_with_crop_pad(Image_Processor):
         annotation = tf.image.resize_with_crop_or_pad(annotation, target_width=self.image_cols,
                                                       target_height=self.image_rows)
         if annotation.shape[-1] != 1:
-            annotation = annotation[..., 1:] # remove background
-            background = tf.expand_dims(1-tf.reduce_sum(annotation,axis=-1), axis=-1)
+            annotation = annotation[..., 1:]  # remove background
+            background = tf.expand_dims(1 - tf.reduce_sum(annotation, axis=-1), axis=-1)
             annotation = tf.concat([background, annotation], axis=-1)
         image_features['annotation'] = annotation
         return image_features
@@ -540,8 +552,10 @@ class Clip_Images(Image_Processor):
                  power_val_c=1, min_images=0, min_rows=0, min_cols=0):
         self.annotations_index = annotations_index
         self.bounding_box_expansion = tf.convert_to_tensor(bounding_box_expansion)
-        self.power_val_z, self.power_val_r, self.power_val_c = tf.constant(power_val_z), tf.constant(power_val_r), tf.constant(power_val_c)
-        self.min_images, self.min_rows, self.min_cols = tf.constant(min_images), tf.constant(min_rows), tf.constant(min_cols)
+        self.power_val_z, self.power_val_r, self.power_val_c = tf.constant(power_val_z), tf.constant(
+            power_val_r), tf.constant(power_val_c)
+        self.min_images, self.min_rows, self.min_cols = tf.constant(min_images), tf.constant(min_rows), tf.constant(
+            min_cols)
 
     def parse(self, image_features, *args, **kwargs):
         zero = tf.constant(0)
@@ -549,7 +563,8 @@ class Clip_Images(Image_Processor):
         annotation = image_features['annotation']
         img_shape = tf.shape(image)
         if self.annotations_index:
-            bounding_box = image_features['bounding_boxes_{}'.format(self.annotations_index)][0] # Assuming one bounding box
+            bounding_box = image_features['bounding_boxes_{}'.format(self.annotations_index)][
+                0]  # Assuming one bounding box
             c_start, r_start, z_start = bounding_box[0], bounding_box[1], bounding_box[2]
             c_stop, r_stop, z_stop = c_start + bounding_box[3], r_start + bounding_box[4], z_start + bounding_box[5]
             z_start = tf.maximum(zero, z_start - self.bounding_box_expansion[0])
@@ -563,24 +578,26 @@ class Clip_Images(Image_Processor):
             z_start, r_start, c_start = 0, 0, 0
         z_total, r_total, c_total = z_stop - z_start, r_stop - r_start, c_stop - c_start
 
-        remainder_z = tf.math.floormod(self.power_val_z - z_total,self.power_val_z) if tf.math.floormod(z_total,
-                                                                                                        self.power_val_z) != zero else zero
+        remainder_z = tf.math.floormod(self.power_val_z - z_total, self.power_val_z) if tf.math.floormod(z_total,
+                                                                                                         self.power_val_z) != zero else zero
         remainder_r = tf.math.floormod(self.power_val_r - r_total, self.power_val_r) if tf.math.floormod(r_total,
                                                                                                          self.power_val_r) != zero else zero
         remainder_c = tf.math.floormod(self.power_val_c - r_total, self.power_val_c) if tf.math.floormod(r_total,
                                                                                                          self.power_val_c) != zero else zero
         min_images, min_rows, min_cols = z_total + remainder_z, r_total + remainder_r, c_total + remainder_c
-        min_images = tf.maximum(self.min_images,min_images)
+        min_images = tf.maximum(self.min_images, min_images)
         min_rows = tf.maximum(self.min_rows, min_rows)
         min_cols = tf.maximum(self.min_cols, min_cols)
         output_dims = tf.convert_to_tensor([min_images, min_rows, min_cols])
-        image_cube = image[z_start:z_start + min_images, r_start:r_start + min_rows, c_start:c_start + min_cols,...]
-        annotation_cube = annotation[z_start:z_start + min_images, r_start:r_start + min_rows, c_start:c_start + min_cols]
+        image_cube = image[z_start:z_start + min_images, r_start:r_start + min_rows, c_start:c_start + min_cols, ...]
+        annotation_cube = annotation[z_start:z_start + min_images, r_start:r_start + min_rows,
+                          c_start:c_start + min_cols]
         img_shape = tf.shape(image_cube)
         size_dif = output_dims - img_shape[:3]
         if tf.reduce_max(size_dif) > 0:
-            paddings = tf.convert_to_tensor([[size_dif[0], zero], [size_dif[1], zero], [size_dif[2], zero], [zero, zero]])
-            image_cube = tf.pad(image_cube,paddings=paddings,constant_values=tf.reduce_min(image))
+            paddings = tf.convert_to_tensor(
+                [[size_dif[0], zero], [size_dif[1], zero], [size_dif[2], zero], [zero, zero]])
+            image_cube = tf.pad(image_cube, paddings=paddings, constant_values=tf.reduce_min(image))
             annotation_cube = tf.pad(annotation_cube, paddings=paddings)
         image_features['image'] = image_cube
         image_features['annotation'] = annotation_cube
@@ -595,8 +612,8 @@ class Pull_Subset(Image_Processor):
         num_images = images.shape[0]
         if num_images > self.max_batch:
             random_index = tf.random.uniform(shape=[], minval=0, maxval=num_images - self.max_batch, dtype='int32')
-            images = images[random_index:random_index+self.max_batch,...]
-            annotations = annotations[random_index:random_index+self.max_batch,...]
+            images = images[random_index:random_index + self.max_batch, ...]
+            annotations = annotations[random_index:random_index + self.max_batch, ...]
         return images, annotations
 
 
@@ -615,11 +632,13 @@ class Pull_Bounding_Box(Image_Processor):
             raise AssertionError('Cannot have both max_volume and max_voxels specified')
         self.min_volume = tf.constant(min_volume * 1000, dtype='float')
         self.min_voxels = tf.constant(min_voxels, dtype='float')
-        self.max_volume, self.max_voxels = tf.constant(max_volume * 1000, dtype='float'), tf.constant(max_voxels, dtype='float')
+        self.max_volume, self.max_voxels = tf.constant(max_volume * 1000, dtype='float'), tf.constant(max_voxels,
+                                                                                                      dtype='float')
 
     def parse(self, image_features, *args, **kwargs):
         if self.annotation_index is not None:
-            keys = ['bounding_boxes_{}_{}_{}'.format(i,j,self.annotation_index) for i in ['r','z','c'] for j in ['start','stop']]
+            keys = ['bounding_boxes_{}_{}_{}'.format(i, j, self.annotation_index) for i in ['r', 'z', 'c'] for j in
+                    ['start', 'stop']]
             for key in keys:
                 if key not in image_features:
                     return image_features
@@ -629,8 +648,9 @@ class Pull_Bounding_Box(Image_Processor):
             z_stop = image_features['bounding_boxes_z_stop_{}'.format(self.annotation_index)]
             r_stop = image_features['bounding_boxes_r_stop_{}'.format(self.annotation_index)]
             c_stop = image_features['bounding_boxes_c_stop_{}'.format(self.annotation_index)]
-            image_features['image'] = image_features['image'][z_start:z_stop,r_start:r_stop,c_start:c_stop,...]
-            image_features['annotation'] = image_features['annotation'][z_start:z_stop,r_start:r_stop,c_start:c_stop,...]
+            image_features['image'] = image_features['image'][z_start:z_stop, r_start:r_stop, c_start:c_stop, ...]
+            image_features['annotation'] = image_features['annotation'][z_start:z_stop, r_start:r_stop, c_start:c_stop,
+                                           ...]
         return image_features
 
 
