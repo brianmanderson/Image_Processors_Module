@@ -484,20 +484,23 @@ class Flip_Images(Image_Processor):
 
 
 class Threshold_Images(Image_Processor):
-    def __init__(self, lower_bound=-np.inf, upper_bound=np.inf):
+    def __init__(self, lower_bound=-np.inf, upper_bound=np.inf, divide=True):
         '''
         :param lower_bound: Lower bound to threshold images, normally -3.55 if Normalize_Images is used previously
         :param upper_bound: Upper bound to threshold images, normally 3.55 if Normalize_Images is used previously
         '''
         self.lower = tf.constant(lower_bound, dtype='float32')
         self.upper = tf.constant(upper_bound, dtype='float32')
+        self.divide = divide
 
     def parse(self, image_features, *args, **kwargs):
         image_features['image'] = tf.where(image_features['image'] > tf.cast(self.upper, dtype=image_features['image'].dtype),
                                            tf.cast(self.upper, dtype=image_features['image'].dtype), image_features['image'])
         image_features['image'] = tf.where(image_features['image'] < tf.cast(self.lower,dtype=image_features['image'].dtype),
                                            tf.cast(self.lower,dtype=image_features['image'].dtype), image_features['image'])
-        image_features['image'] = tf.divide(image_features['image'],tf.cast(tf.subtract(self.upper,self.lower),dtype=image_features['image'].dtype))
+        if self.divide:
+            image_features['image'] = tf.divide(image_features['image'], tf.cast(tf.subtract(self.upper, self.lower),
+                                                                                 dtype=image_features['image'].dtype))
         return image_features
 
 
