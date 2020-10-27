@@ -328,6 +328,42 @@ class Return_Lung(Image_Processor):
         return image_features
 
 
+class MultiplyImagesByConstant(Image_Processor):
+    def __init__(self, multiply_value=255.):
+        '''
+        :param multiply_value: Value to multiply array by
+        '''
+        self.multiply_value = tf.constant(multiply_value, dtype='float32')
+
+    def parse(self, image_features, *args, **kwargs):
+        image_features['image'] = image_features['image'] * self.multiply_value
+        return image_features
+
+
+class AddConstantToImages(Image_Processor):
+    def __init__(self, add_value=255.):
+        '''
+        :param add_value: Value to add array by
+        '''
+        self.add_value = tf.constant(add_value, dtype='float32')
+
+    def parse(self, image_features, *args, **kwargs):
+        image_features['image'] = image_features['image'] + self.add_value
+        return image_features
+
+
+class V3Normalize(Image_Processor):
+    def __init__(self):
+        '''
+        Normalizes a 255. image to values trained on pascal
+        '''
+        self.means = tf.constant([-123.68, -116.779, -103.939])
+
+    def parse(self, image_features, *args, **kwargs):
+        image_features['image'] = tf.add(image_features['image'], self.means)
+        return image_features
+
+
 class Normalize_Images(Image_Processor):
     def __init__(self, mean_val=0, std_val=1):
         '''
