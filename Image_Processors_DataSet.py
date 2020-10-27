@@ -377,6 +377,24 @@ class Normalize_Images(Image_Processor):
         return image_features
 
 
+class CombineAnnotations(Image_Processor):
+    def __init__(self, list_value_dictionaries=[{2: 1}]):
+        '''
+        :param list_value_dictionaries: a list of dictionaries for annotation values you want transformed into another,
+        default is 2 -> 1
+        '''
+        self.list_value_dictionaries = list_value_dictionaries
+
+    def parse(self, image_features, *args, **kwargs):
+        for value_dictionary in self.list_value_dictionaries:
+            for value_key in value_dictionary:
+                value = tf.constant(value_dictionary[value_key], dtype=image_features['annotation'].dtype)
+                value_key = tf.constant(value_key, dtype=image_features['annotation'].dtype)
+                image_features['annotation'] = tf.where(image_features['annotation'] == value_key,
+                                                        value, image_features['annotation'])
+        return image_features
+
+
 class Combined_Annotations(Image_Processor):
     def __init__(self, values=[tf.constant(1, dtype='int8'), tf.constant(2, dtype='int8')]):
         self.values = values
