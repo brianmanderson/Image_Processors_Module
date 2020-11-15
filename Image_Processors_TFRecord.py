@@ -374,6 +374,7 @@ class Resampler(Image_Processor):
                                                     output_spacing=output_spacing)
             if len(input_features['annotation'].shape) == 3:
                 annotation_handle = sitk.GetImageFromArray(input_features['annotation'])
+                annotation_handle.SetSpacing(input_spacing)
                 annotation_handle = resampler.resample_image(input_image_handle=annotation_handle,
                                                              output_spacing=output_spacing,
                                                              interpolator=self.interpolator)
@@ -381,9 +382,12 @@ class Resampler(Image_Processor):
                 annotation = input_features['annotation']
                 output = []
                 for i in range(annotation.shape[-1]):
-                    output.append(resampler.resample_image(annotation[...,i], input_spacing=input_spacing,
-                                                           output_spacing=output_spacing,
-                                                           is_annotation=self.binary_annotation)[...,None])
+                    annotation_handle = sitk.GetArrayFromImage(annotation[..., i])
+                    annotation_handle.SetSpacing(input_spacing)
+                    resampled_handle = resampler.resample_image(input_image_handle=annotation_handle,
+                                                                output_spacing=output_spacing,
+                                                                interpolator=self.interpolator)
+                    output.append(sitk.GetArrayFromImage(resampled_handle)[..., None])
                 stacked = np.concatenate(output, axis=-1)
                 stacked[...,0] = 1-np.sum(stacked[...,1:],axis=-1)
                 annotation_handle = sitk.GetImageFromArray(stacked)
