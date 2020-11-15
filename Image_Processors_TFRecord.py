@@ -3,7 +3,7 @@ __author__ = 'Brian M Anderson'
 import SimpleITK as sitk
 import numpy as np
 from _collections import OrderedDict
-from .Resample_Class.Resample_Class import Resample_Class_Object
+from .Resample_Class.src.NiftiResampler.ResampleTools import ImageResampler
 from scipy.ndimage.filters import gaussian_filter
 import tensorflow as tf
 import os, pickle
@@ -91,7 +91,7 @@ def return_example_proto(base_dictionary, image_dictionary_for_pickle={}, data_t
 
 
 def serialize_example(image_path, annotation_path, image_processors=None, record_writer=None, verbose=False):
-    get_features(image_path,annotation_path, image_processors=image_processors, record_writer=record_writer,
+    get_features(image_path, annotation_path, image_processors=image_processors, record_writer=record_writer,
                  verbose=verbose)
 
 
@@ -333,12 +333,11 @@ class Resample_LiTs(Image_Processor):
                 output_spacing.append(self.desired_output_spacing[index])
         output_spacing = tuple(output_spacing)
         if output_spacing != input_spacing:
-            resampler = Resample_Class_Object()
+            resampler = ImageResampler()
             print('Resampling {} to {}'.format(input_spacing,output_spacing))
-            image_handle = resampler.resample_image(input_image=image_handle,input_spacing=input_spacing,
-                                                    output_spacing=output_spacing,is_annotation=False)
-            annotation_handle = resampler.resample_image(input_image=annotation_handle,input_spacing=input_spacing,
-                                                         output_spacing=output_spacing,is_annotation=False)
+            image_handle = resampler.resample_image(input_image_handle=image_handle, output_spacing=output_spacing)
+            annotation_handle = resampler.resample_image(input_image_handle=annotation_handle,
+                                                         output_spacing=output_spacing)
             input_features['image'] = sitk.GetArrayFromImage(image_handle)
             input_features['annotation'] = sitk.GetArrayFromImage(annotation_handle)
             input_features['spacing'] = np.asarray(annotation_handle.GetSpacing(), dtype='float32')
@@ -348,7 +347,9 @@ class Resample_LiTs(Image_Processor):
 class Resampler(Image_Processor):
     def __init__(self, desired_output_spacing=(None,None,None), make_512=False, binary_annotation=True):
         self.desired_output_spacing = desired_output_spacing
-        self.binary_annotation = binary_annotation
+        self.interpolator = 'Linear'
+        if binary_annotation:
+            self.interpolator = 'Nearest'
         self.make_512 = make_512
 
     def parse(self, input_features):
@@ -367,14 +368,15 @@ class Resampler(Image_Processor):
                 output_spacing.append(self.desired_output_spacing[index])
         output_spacing = tuple(output_spacing)
         if output_spacing != input_spacing:
-            resampler = Resample_Class_Object()
+            resampler = ImageResampler()
             print('Resampling {} to {}'.format(input_spacing,output_spacing))
-            image_handle = resampler.resample_image(input_image=image_handle,input_spacing=input_spacing,
-                                                    output_spacing=output_spacing,is_annotation=False)
+            image_handle = resampler.resample_image(input_image_handle=image_handle,
+                                                    output_spacing=output_spacing)
             if len(input_features['annotation'].shape) == 3:
                 annotation_handle = sitk.GetImageFromArray(input_features['annotation'])
-                annotation_handle = resampler.resample_image(input_image=annotation_handle,input_spacing=input_spacing,
-                                                             output_spacing=output_spacing,is_annotation=self.binary_annotation)
+                annotation_handle = resampler.resample_image(input_image_handle=annotation_handle,
+                                                             output_spacing=output_spacing,
+                                                             interpolator=self.interpolator)
             else:
                 annotation = input_features['annotation']
                 output = []
