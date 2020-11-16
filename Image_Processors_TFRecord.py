@@ -66,7 +66,7 @@ def _int64_feature(value):
 
 
 def return_example_proto(base_dictionary, image_dictionary_for_pickle={}, data_type_dictionary={}):
-    feature = OrderedDict()
+    feature = {}
     for key in base_dictionary:
         data = base_dictionary[key]
         if type(data) is int:
@@ -74,6 +74,10 @@ def return_example_proto(base_dictionary, image_dictionary_for_pickle={}, data_t
             if key not in image_dictionary_for_pickle:
                 image_dictionary_for_pickle[key] = tf.io.FixedLenFeature([], tf.int64)
         elif type(data) is np.ndarray:
+            for index, shape_value in enumerate(data.shape):
+                if '{}_size_{}'.format(key, index) not in base_dictionary:
+                    feature['{}_size_{}'.format(key, index)] = _int64_feature(tf.constant(shape_value, dtype='int64'))
+                    image_dictionary_for_pickle['{}_size_{}'.format(key, index)] = tf.io.FixedLenFeature([], tf.int64)
             feature[key] = _bytes_feature(data.tostring())
             if key not in image_dictionary_for_pickle:
                 image_dictionary_for_pickle[key] = tf.io.FixedLenFeature([], tf.string)
@@ -109,8 +113,8 @@ class Record_Writer(Image_Processor):
         if self.out_file is None:
             image_name = os.path.split(input_features[keys[0]]['image_path'])[-1].split('.nii')[0]
             filename = os.path.join(self.out_path, '{}.tfrecord'.format(image_name))
-        features = OrderedDict()
-        d_type = OrderedDict()
+        features = {}
+        d_type = {}
         writer = tf.io.TFRecordWriter(filename)
         examples = 0
         for key in input_features.keys():
@@ -310,11 +314,9 @@ class To_Categorical(Image_Processor):
         self.annotation_key = annotation_key
 
     def parse(self, input_features):
-        assert self.annotation_key in input_features.keys(), 'Make sure the key you are referring to is present ' \
-                                                             'in the features,  {} ' \
-                                                             'was not found'.format(self.annotation_key)
+        _check_keys_(input_features=input_features, keys=self.annotation_key)
         input_features[self.annotation_key] = to_categorical(input_features[self.annotation_key], self.num_classes)
-        input_features['num_classes'] = self.num_classes
+        input_features['num_classes_{}'.format(self.annotation_key)] = self.num_classes
         return input_features
 
 
@@ -364,8 +366,8 @@ class Resampler(Image_Processor):
 
     def parse(self, input_features):
         resampler = ImageResampler()
+        _check_keys_(input_features=input_features, keys=self.resample_keys)
         for key, interpolator in zip(self.resample_keys, self.resample_interpolators):
-            assert key in input_features.keys(), 'Only pass a key to "resample_keys" if it is present in the features'
             image_handle = input_features[key]
             input_spacing = None
             if 'spacing' in input_features.keys():
@@ -402,6 +404,7 @@ class Resampler(Image_Processor):
                                                             output_spacing=output_spacing,
                                                             interpolator=interpolator)
                     input_features[key] = sitk.GetArrayFromImage(image_handle)
+                    input_features['{}_spacing'.format(key)] = np.asarray(self.desired_output_spacing, dtype='float32')
                 else:
                     output = []
                     for i in range(image_array.shape[-1]):
@@ -414,6 +417,7 @@ class Resampler(Image_Processor):
                     stacked = np.concatenate(output, axis=-1)
                     stacked[..., 0] = 1 - np.sum(stacked[..., 1:], axis=-1)
                     input_features[key] = stacked
+                    input_features['{}_spacing'.format(key)] = np.asarray(self.desired_output_spacing, dtype='float32')
         input_features['spacing'] = np.asarray(self.desired_output_spacing, dtype='float32')
         return input_features
 
@@ -440,9 +444,7 @@ class Add_Images_And_Annotations(Image_Processor):
         self.nifti_path_keys, self.out_keys, self.dtypes = nifti_path_keys, out_keys, dtypes
 
     def parse(self, input_features):
-        for key in self.nifti_path_keys:
-            assert key in input_features.keys(), 'Need to pass a nifti_path_key that is inside the input_features. ' \
-                                                 '{} are present'.format(input_features.keys())
+        _check_keys_(input_features=input_features, keys=self.nifti_path_keys)
         for nifti_path_key, out_key, dtype in zip(self.nifti_path_keys, self.out_keys, self.dtypes):
             image_handle = sitk.ReadImage(input_features[nifti_path_key])
             image_array = sitk.GetArrayFromImage(image_handle)
@@ -638,9 +640,6 @@ class Distribute_into_3D(Image_Processor):
             image_features['annotation'] = annotation
             image_features['start'] = start
             image_features['stop'] = stop
-            image_features['z_images'] = image.shape[0]
-            image_features['rows'] = image.shape[1]
-            image_features['cols'] = image.shape[2]
             image_features['spacing'] = spacing
             for key in input_features.keys():
                 if key not in image_features.keys():
@@ -666,8 +665,6 @@ class Distribute_into_2D(Image_Processor):
             image_features['image_path'] = image_path
             image_features['image'] = image[index]
             image_features['annotation'] = annotation[index]
-            image_features['rows'] = rows
-            image_features['cols'] = cols
             image_features['spacing'] = spacing[:-1]
             for key in input_features.keys():
                 if key not in image_features.keys():
@@ -695,6 +692,109 @@ class NormalizeParotidMR(Image_Processor):
         return input_features
 
 
+def _check_keys_(input_features, keys):
+    if type(keys) is list or type(keys) is tuple:
+        for key in keys:
+            assert key in input_features.keys(), 'Make sure the key you are referring to is present in the features, ' \
+                                                 '{} was not found'.format(key)
+    else:
+        assert keys in input_features.keys(), 'Make sure the key you are referring to is present in the features, ' \
+                                              '{} was not found'.format(keys)
+
+
+class AddByValues(Image_Processor):
+    def __init__(self, image_keys=('image',), values=(1.,)):
+        """
+        :param image_keys: tuple of keys to divide by the value
+        :param values: values by which to add by
+        """
+        self.image_keys = image_keys
+        self.values = values
+
+    def parse(self, input_features):
+        _check_keys_(input_features=input_features, keys=self.image_keys)
+        for key, value in zip(self.image_keys, self.values):
+            image_array = input_features[key]
+            image_array += value
+            input_features[key] = image_array
+        return input_features
+
+
+class DistributeIntoRecurrenceCubes(Image_Processor):
+    def __init__(self, rows=128, cols=128, images=32):
+        self.rows, self.cols, self.images = rows, cols, images
+    """
+    Highly specialized for the task of model prediction, likely won't be useful for others
+    """
+    def parse(self, input_features):
+        out_features = OrderedDict()
+        primary_array = input_features['primary_image']
+        image_size = primary_array.shape
+        secondary_array = input_features['secondary_image']
+        primary_mask = input_features['primary_mask']
+        '''
+        Now, find centroids in the cases
+        '''
+        Connected_Component_Filter = sitk.ConnectedComponentImageFilter()
+        stats = sitk.LabelShapeStatisticsImageFilter()
+
+        no_recurred_image = sitk.GetImageFromArray((primary_mask == 1).astype('int'))
+        connected_image = Connected_Component_Filter.Execute(no_recurred_image)
+        stats.Execute(connected_image)
+        no_recurrence_centroids = [no_recurred_image.TransformPhysicalPointToIndex(stats.GetCentroid(l))
+                                   for l in stats.GetLabels()]
+
+        recurred_image = sitk.GetImageFromArray((primary_mask == 2).astype('int'))
+        connected_image = Connected_Component_Filter.Execute(recurred_image)
+        stats.Execute(connected_image)
+        recurrence_centroids = [recurred_image.TransformPhysicalPointToIndex(stats.GetCentroid(l))
+                                for l in stats.GetLabels()]
+        for value, cube_name, centroids in zip([0, 1], ['Non_Recurrence_Cube_{}', 'Recurrence_Cube_{}'],
+                                               [no_recurrence_centroids, recurrence_centroids]):
+            for index, centroid in enumerate(centroids):
+                temp_feature = OrderedDict()
+                col_center, row_center, z_center = centroid
+                z_start = max([0, z_center - self.images // 2])
+                z_stop = min([image_size[0], z_center + self.images // 2])
+                row_start = max([0, row_center - self.rows // 2])
+                row_stop = min([image_size[1], row_center + self.rows // 2])
+                col_start = max([0, col_center - self.cols // 2])
+                col_stop = min([image_size[2], col_center + self.cols // 2])
+                primary_cube = primary_array[z_start:z_stop, row_start:row_stop, col_start:col_stop]
+                secondary_cube = secondary_array[z_start:z_stop, row_start:row_stop, col_start:col_stop]
+                out_cube = np.stack([primary_cube, secondary_cube], axis=-1)
+                img_shape = out_cube.shape
+                pads = [self.images - img_shape[0], self.rows - img_shape[1], self.cols - img_shape[2], 0]
+                pads = [[max([0, floor(i / 2)]), max([0, ceil(i / 2)])] for i in pads]
+                out_cube = np.pad(out_cube, pads, constant_values=np.min(out_cube))
+                temp_feature['image'] = out_cube
+                temp_feature['annotation'] = to_categorical(value, 2)
+                wanted_keys = ('primary_image_path', 'out_path', 'out_file', 'spacing')
+                for key in wanted_keys:  # Bring along anything else we care about
+                    if key not in temp_feature.keys():
+                        temp_feature[key] = input_features[key]
+                out_features[cube_name.format(index)] = temp_feature
+        return out_features
+
+
+class DivideByValues(Image_Processor):
+    def __init__(self, image_keys=('image',), values=(1.,)):
+        """
+        :param image_keys: tuple of keys to divide by the value
+        :param values: values by which to divide by
+        """
+        self.image_keys = image_keys
+        self.values = values
+
+    def parse(self, input_features):
+        _check_keys_(input_features=input_features, keys=self.image_keys)
+        for key, value in zip(self.image_keys, self.values):
+            image_array = input_features[key]
+            image_array /= value
+            input_features[key] = image_array
+        return input_features
+
+
 class Threshold_Images(Image_Processor):
     def __init__(self, image_key='image', lower_bound=-np.inf, upper_bound=np.inf, divide=True):
         """
@@ -708,8 +808,7 @@ class Threshold_Images(Image_Processor):
         self.divide = divide
 
     def parse(self, image_features, *args, **kwargs):
-        assert self.image_key in image_features.keys(), 'Make sure the key you are referring to is present in the ' \
-                                                        'features,  {} was not found'.format(self.image_key)
+        _check_keys_(input_features=image_features, keys=self.image_key)
         image = image_features[self.image_key]
         image[image < self.lower] = self.lower
         image[image > self.upper] = self.upper
@@ -739,14 +838,17 @@ class Normalize_to_annotation(Image_Processor):
         self.annotation_key = annotation_key
 
     def parse(self, input_features):
-        for key in [self.image_key, self.annotation_key]:
-            assert key in input_features.keys(), 'Make sure the key you are referring to is present in the features, ' \
-                                                 '{} was not found'.format(key)
+        _check_keys_(input_features=input_features, keys=(self.image_key, self.annotation_key))
         images = input_features[self.image_key]
         annotation = input_features[self.annotation_key]
-        mask = np.zeros(annotation.shape)
-        for value in self.annotation_value_list:
-            mask += annotation == value
+        if len(annotation.shape) == 3:
+            mask = np.zeros(annotation.shape)
+            for value in self.annotation_value_list:
+                mask += annotation == value
+        else:
+            mask = np.zeros(annotation.shape[:-1])
+            for value in self.annotation_value_list:
+                mask += annotation[..., value]
         data = images[mask > 0].flatten()
         if self.lower_percentile is not None and self.upper_percentile is not None:
             lower_bound = np.percentile(data, 25)
@@ -816,9 +918,7 @@ class Box_Images(Image_Processor):
         self.image_key, self.annotation_key = image_key, annotation_key
 
     def parse(self, input_features):
-        for key in [self.image_key, self.annotation_key]:
-            assert key in input_features.keys(), 'Make sure the key you are referring to is present in the features, ' \
-                                                 '{} was not found'.format(key)
+        _check_keys_(input_features=input_features, keys=(self.image_key, self.annotation_key))
         annotation = input_features[self.annotation_key]
         image = input_features[self.image_key]
         if len(annotation.shape) > 3:
@@ -900,6 +1000,7 @@ class Add_Bounding_Box_Indexes(Image_Processor):
         self.label_name = label_name
 
     def parse(self, input_features):
+        _check_keys_(input_features=input_features, keys=self.label_name)
         annotation_base = input_features[self.label_name]
         for val in self.wanted_vals_for_bbox:
             temp_val = val
