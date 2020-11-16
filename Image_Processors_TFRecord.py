@@ -400,6 +400,7 @@ class Resampler(Image_Processor):
                                                             output_spacing=output_spacing,
                                                             interpolator=interpolator)
                     input_features[key] = sitk.GetArrayFromImage(image_handle)
+                    input_features['{}_spacing'.format(key)] = np.asarray(self.desired_output_spacing, dtype='float32')
                 else:
                     output = []
                     for i in range(image_array.shape[-1]):
@@ -412,7 +413,7 @@ class Resampler(Image_Processor):
                     stacked = np.concatenate(output, axis=-1)
                     stacked[..., 0] = 1 - np.sum(stacked[..., 1:], axis=-1)
                     input_features[key] = stacked
-        input_features['spacing'] = np.asarray(self.desired_output_spacing, dtype='float32')
+                    input_features['{}_spacing'.format(key)] = np.asarray(self.desired_output_spacing, dtype='float32')
         return input_features
 
 
@@ -719,6 +720,33 @@ class AddByValues(Image_Processor):
         return input_features
 
 
+class DistributeIntoRecurrenceCubes(Image_Processor):
+    """
+    Highly specialized for the task of model prediction, likely won't be useful for others
+    """
+    def parse(self, input_features):
+        primary_array = input_features['primary_image']
+        secondary_array = input_features['secondary_image']
+        primary_mask = input_features['primary_mask']
+        '''
+        Now, find centroids in the cases
+        '''
+        Connected_Component_Filter = sitk.ConnectedComponentImageFilter()
+        stats = sitk.LabelShapeStatisticsImageFilter()
+
+        no_recurred_image = sitk.GetImageFromArray((primary_mask == 1).astype('int'))
+        connected_image = Connected_Component_Filter.Execute(no_recurred_image)
+        stats.Execute(connected_image)
+        no_recurrence_centroids = [no_recurred_image.TransformPhysicalPointToIndex(stats.GetCentroid(l))
+                                   for l in stats.GetLabels()]
+
+        recurred_image = sitk.GetImageFromArray((primary_mask == 2).astype('int'))
+        connected_image = Connected_Component_Filter.Execute(recurred_image)
+        stats.Execute(connected_image)
+        recurrence_centroids = [recurred_image.TransformPhysicalPointToIndex(stats.GetCentroid(l))
+                                for l in stats.GetLabels()]
+        input_features = Add_Bounding_Box_No_Recurrence.parse(input_features)
+
 class DivideByValues(Image_Processor):
     def __init__(self, image_keys=('image',), values=(1.,)):
         """
@@ -942,6 +970,7 @@ class Add_Bounding_Box_Indexes(Image_Processor):
         self.label_name = label_name
 
     def parse(self, input_features):
+        _check_keys_(input_features=input_features, keys=self.label_name)
         annotation_base = input_features[self.label_name]
         for val in self.wanted_vals_for_bbox:
             temp_val = val
