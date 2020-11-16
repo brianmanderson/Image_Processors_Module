@@ -314,7 +314,7 @@ class To_Categorical(Image_Processor):
                                                              'in the features,  {} ' \
                                                              'was not found'.format(self.annotation_key)
         input_features[self.annotation_key] = to_categorical(input_features[self.annotation_key], self.num_classes)
-        input_features['num_classes'] = self.num_classes
+        input_features['num_classes_{}'.format(self.annotation_key)] = self.num_classes
         return input_features
 
 
