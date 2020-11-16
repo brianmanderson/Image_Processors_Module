@@ -432,8 +432,8 @@ class Add_Images_And_Annotations(Image_Processor):
         for key in self.nifti_path_keys:
             assert key in input_features.keys(), 'Need to pass a nifti_path_key that is inside the input_features. ' \
                                                  '{} are present'.format(input_features.keys())
-        for nifti_path, out_key, dtype in zip(self.nifti_path_keys, self.out_keys, self.dtypes):
-            image_handle = sitk.ReadImage(nifti_path)
+        for nifti_path_key, out_key, dtype in zip(self.nifti_path_keys, self.out_keys, self.dtypes):
+            image_handle = sitk.ReadImage(input_features[nifti_path_key])
             image_array = sitk.GetArrayFromImage(image_handle)
             input_features[out_key] = image_array.astype(dtype=dtype)
             input_features['spacing'] = np.asarray(image_handle.GetSpacing(), dtype='float32')
