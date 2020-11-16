@@ -696,19 +696,29 @@ class Threshold_Images(Image_Processor):
 
 
 class Normalize_to_annotation(Image_Processor):
-    def __init__(self, annotation_value_list=None, mirror_max=False, lower_percentile=None, upper_percentile=None):
-        '''
-        :param annotation_value: mask values to normalize over, [1]
-        '''
+    def __init__(self, image_key='image', annotation_key='annotation', annotation_value_list=None, mirror_max=False, lower_percentile=None, upper_percentile=None):
+        """
+        :param image_key: key which corresponds to an image to be normalized
+        :param annotation_key: key which corresponds to an annotation image used for normalization
+        :param annotation_value_list: a list of values that you want to be normalized across
+        :param mirror_max:
+        :param lower_percentile:
+        :param upper_percentile:
+        """
         assert annotation_value_list is not None, 'Need to provide a list of values'
         self.annotation_value_list = annotation_value_list
         self.mirror_max = mirror_max
         self.lower_percentile = lower_percentile
         self.upper_percentile = upper_percentile
+        self.image_key = image_key
+        self.annotation_key = annotation_key
 
     def parse(self, input_features):
-        images = input_features['image']
-        annotation = input_features['annotation']
+        for key in [self.image_key, self.annotation_key]:
+            assert key in input_features.keys(), 'Make sure the key you are referring to is present in the features, ' \
+                                                 '{} was not found'.format(key)
+        images = input_features[self.image_key]
+        annotation = input_features[self.annotation_key]
         mask = np.zeros(annotation.shape)
         for value in self.annotation_value_list:
             mask += annotation == value
@@ -719,7 +729,7 @@ class Normalize_to_annotation(Image_Processor):
             data = data[np.where((data >= lower_bound) & (data <= upper_bound))]
             mean_val, std_val = np.mean(data), np.std(data)
             images = (images - mean_val) / std_val
-            input_features['image'] = images
+            input_features[self.image_key] = images
             return input_features
         counts, bins = np.histogram(data, bins=100)
         bins = bins[:-1]
@@ -743,7 +753,7 @@ class Normalize_to_annotation(Image_Processor):
         data = data[np.where((data >= min_values) & (data <= max_values))]
         mean_val, std_val = np.mean(data), np.std(data)
         images = (images - mean_val) / std_val
-        input_features['image'] = images
+        input_features[self.image_key] = images
         return input_features
 
 
