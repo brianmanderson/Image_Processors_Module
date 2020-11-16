@@ -701,6 +701,24 @@ def _check_keys_(input_features, keys):
                                               '{} was not found'.format(keys)
 
 
+class AddByValues(Image_Processor):
+    def __init__(self, image_keys=('image',), values=(1.,)):
+        """
+        :param image_keys: tuple of keys to divide by the value
+        :param values: values by which to add by
+        """
+        self.image_keys = image_keys
+        self.values = values
+
+    def parse(self, input_features):
+        _check_keys_(input_features=input_features, keys=self.image_keys)
+        for key, value in zip(self.image_keys, self.values):
+            image_array = input_features[key]
+            image_array += value
+            input_features[key] = image_array
+        return input_features
+
+
 class DivideByValues(Image_Processor):
     def __init__(self, image_keys=('image',), values=(1.,)):
         """
