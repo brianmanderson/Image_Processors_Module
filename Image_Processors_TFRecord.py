@@ -140,7 +140,7 @@ def get_features(features, image_processors=None, record_writer=None, verbose=0)
 
 
 def down_dictionary(input_dictionary, out_dictionary=OrderedDict(), out_index=0):
-    if 'image_path' in input_dictionary.keys():
+    if 'out_path' in input_dictionary.keys():
         out_dictionary['Example_{}'.format(out_index)] = input_dictionary
         out_index += 1
         return out_dictionary, out_index
