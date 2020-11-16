@@ -414,6 +414,7 @@ class Resampler(Image_Processor):
                     stacked[..., 0] = 1 - np.sum(stacked[..., 1:], axis=-1)
                     input_features[key] = stacked
                     input_features['{}_spacing'.format(key)] = np.asarray(self.desired_output_spacing, dtype='float32')
+        input_features['spacing'] = np.asarray(self.desired_output_spacing, dtype='float32')
         return input_features
 
 
@@ -635,9 +636,9 @@ class Distribute_into_3D(Image_Processor):
             image_features['annotation'] = annotation
             image_features['start'] = start
             image_features['stop'] = stop
-            image_features['z_images'] = image.shape[0]
-            image_features['rows'] = image.shape[1]
-            image_features['cols'] = image.shape[2]
+            image_features['image_size_0'] = image.shape[0]
+            image_features['image_size_1'] = image.shape[1]
+            image_features['image_size_2'] = image.shape[2]
             image_features['spacing'] = spacing
             for key in input_features.keys():
                 if key not in image_features.keys():
@@ -663,8 +664,8 @@ class Distribute_into_2D(Image_Processor):
             image_features['image_path'] = image_path
             image_features['image'] = image[index]
             image_features['annotation'] = annotation[index]
-            image_features['rows'] = rows
-            image_features['cols'] = cols
+            image_features['image_size_0'] = rows
+            image_features['image_size_1'] = cols
             image_features['spacing'] = spacing[:-1]
             for key in input_features.keys():
                 if key not in image_features.keys():
@@ -721,11 +722,15 @@ class AddByValues(Image_Processor):
 
 
 class DistributeIntoRecurrenceCubes(Image_Processor):
+    def __init__(self, rows=128, cols=128, images=32):
+        self.rows, self.cols, self.images = rows, cols, images
     """
     Highly specialized for the task of model prediction, likely won't be useful for others
     """
     def parse(self, input_features):
+        out_features = OrderedDict()
         primary_array = input_features['primary_image']
+        image_size = primary_array.shape
         secondary_array = input_features['secondary_image']
         primary_mask = input_features['primary_mask']
         '''
@@ -745,7 +750,39 @@ class DistributeIntoRecurrenceCubes(Image_Processor):
         stats.Execute(connected_image)
         recurrence_centroids = [recurred_image.TransformPhysicalPointToIndex(stats.GetCentroid(l))
                                 for l in stats.GetLabels()]
-        input_features = Add_Bounding_Box_No_Recurrence.parse(input_features)
+        for value, cube_name, centroids in zip([0, 1], ['Non_Recurrence_Cube_{}', 'Recurrence_Cube_{}'],
+                                               [no_recurrence_centroids, recurrence_centroids]):
+            for index, centroid in enumerate(centroids):
+                temp_feature = OrderedDict()
+                col_center, row_center, z_center = centroid
+                z_start = max([0, z_center - self.images // 2])
+                z_stop = min([image_size[0], z_center + self.images // 2])
+                row_start = max([0, row_center - self.rows // 2])
+                row_stop = min([image_size[1], row_center + self.rows // 2])
+                col_start = max([0, col_center - self.cols // 2])
+                col_stop = min([image_size[2], col_center + self.cols // 2])
+                primary_cube = primary_array[z_start:z_stop, row_start:row_stop, col_start:col_stop]
+                secondary_cube = secondary_array[z_start:z_stop, row_start:row_stop, col_start:col_stop]
+                out_cube = np.stack([primary_cube, secondary_cube], axis=-1)
+                img_shape = out_cube.shape
+                pads = [self.images - img_shape[0], self.rows - img_shape[1], self.cols - img_shape[2], 0]
+                pads = [[max([0, floor(i / 2)]), max([0, ceil(i / 2)])] for i in pads]
+                out_cube = np.pad(out_cube, pads, constant_values=np.min(out_cube))
+                temp_feature['image'] = out_cube
+                temp_feature['annotation'] = to_categorical(value, 2)
+                temp_feature['image_size_0'] = img_shape[0]
+                temp_feature['image_size_1'] = img_shape[1]
+                temp_feature['image_size_2'] = img_shape[2]
+                temp_feature['image_size_3'] = 2
+                temp_feature['annotation_size_0'] = 1
+                temp_feature['annotation_size_1'] = 2
+                wanted_keys = ('primary_image_path', 'out_path', 'out_file', 'spacing')
+                for key in wanted_keys:  # Bring along anything else we care about
+                    if key not in temp_feature.keys():
+                        temp_feature[key] = input_features[key]
+                out_features[cube_name.format(index)] = temp_feature
+        return out_features
+
 
 class DivideByValues(Image_Processor):
     def __init__(self, image_keys=('image',), values=(1.,)):
