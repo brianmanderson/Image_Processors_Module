@@ -66,7 +66,7 @@ def _int64_feature(value):
 
 
 def return_example_proto(base_dictionary, image_dictionary_for_pickle={}, data_type_dictionary={}):
-    feature = OrderedDict()
+    feature = {}
     for key in base_dictionary:
         data = base_dictionary[key]
         if type(data) is int:
@@ -77,8 +77,7 @@ def return_example_proto(base_dictionary, image_dictionary_for_pickle={}, data_t
             for index, shape_value in enumerate(data.shape):
                 if '{}_size_{}'.format(key, index) not in base_dictionary:
                     feature['{}_size_{}'.format(key, index)] = _int64_feature(tf.constant(shape_value, dtype='int64'))
-                    if key not in image_dictionary_for_pickle:
-                        image_dictionary_for_pickle[key] = tf.io.FixedLenFeature([], tf.int64)
+                    image_dictionary_for_pickle['{}_size_{}'.format(key, index)] = tf.io.FixedLenFeature([], tf.int64)
             feature[key] = _bytes_feature(data.tostring())
             if key not in image_dictionary_for_pickle:
                 image_dictionary_for_pickle[key] = tf.io.FixedLenFeature([], tf.string)
@@ -114,8 +113,8 @@ class Record_Writer(Image_Processor):
         if self.out_file is None:
             image_name = os.path.split(input_features[keys[0]]['image_path'])[-1].split('.nii')[0]
             filename = os.path.join(self.out_path, '{}.tfrecord'.format(image_name))
-        features = OrderedDict()
-        d_type = OrderedDict()
+        features = {}
+        d_type = {}
         writer = tf.io.TFRecordWriter(filename)
         examples = 0
         for key in input_features.keys():
