@@ -4,7 +4,7 @@ from tensorflow.python.keras.utils.np_utils import to_categorical
 import cv2, math, copy, os, sys
 from skimage.measure import block_reduce
 from .Fill_In_Segments_sitk import Fill_Missing_Segments
-from .Resample_Class.Resample_Class import Resample_Class_Object, sitk
+from .Resample_Class.src.NiftiResampler.ResampleTools import Resample_Class_Object, sitk
 from .Plot_And_Scroll_Images.Plot_Scroll_Images import plot_scroll_Image, plt
 '''
 Description of code
@@ -646,7 +646,7 @@ def get_bounding_box_indexes(annotation):
     '''
     indexes = np.where(np.any(annotation, axis=(0, 1)) == True)[0]
     min_c_s, max_c_s = indexes[0], indexes[-1]
-    return min_z_s, int(max_z_s + 1), min_r_s, int(max_r_s + 1), min_c_s, int(max_c_s + 1)
+    return min_z_s, max_z_s, min_r_s, max_r_s, min_c_s, max_c_s
 
 
 class Random_Horizontal_Vertical_Flips(Image_Processor):
