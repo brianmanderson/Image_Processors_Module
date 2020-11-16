@@ -701,17 +701,23 @@ def _check_keys_(input_features, keys):
                                               '{} was not found'.format(keys)
 
 
-class DivideByValue(Image_Processor):
-    def __init__(self, image_keys=('image'), value=1.):
+class DivideByValues(Image_Processor):
+    def __init__(self, image_keys=('image',), values=(1.,)):
         """
         :param image_keys: tuple of keys to divide by the value
-        :param value: value by which to divide by
+        :param values: values by which to divide by
         """
         self.image_keys = image_keys
-        self.value = value
+        self.values = values
 
     def parse(self, input_features):
         _check_keys_(input_features=input_features, keys=self.image_keys)
+        for key, value in zip(self.image_keys, self.values):
+            image_array = input_features[key]
+            image_array /= value
+            input_features[key] = image_array
+        return input_features
+
 
 class Threshold_Images(Image_Processor):
     def __init__(self, image_key='image', lower_bound=-np.inf, upper_bound=np.inf, divide=True):
