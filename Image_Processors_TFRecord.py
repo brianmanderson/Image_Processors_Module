@@ -349,8 +349,8 @@ class Resample_LiTs(Image_Processor):
 
 
 class Resampler(Image_Processor):
-    def __init__(self, desired_output_spacing=(None, None, None), make_512=False, resample_keys=('image', 'annotation'),
-                 resample_interpolators=('Linear', 'Nearest')):
+    def __init__(self, resample_keys=('image', 'annotation'), resample_interpolators=('Linear', 'Nearest'),
+                 desired_output_spacing=(None, None, None), make_512=False):
         self.desired_output_spacing = desired_output_spacing
         self.resample_keys = resample_keys
         self.resample_interpolators = resample_interpolators
@@ -358,12 +358,14 @@ class Resampler(Image_Processor):
 
     def parse(self, input_features):
         resampler = ImageResampler()
-        input_spacing = None
-        if 'spacing' in input_features.keys():
-            input_spacing = tuple([float(i) for i in input_features['spacing']])
         for key, interpolator in zip(self.resample_keys, self.resample_interpolators):
             assert key in input_features.keys(), 'Only pass a key to "resample_keys" if it is present in the features'
             image_handle = input_features[key]
+            input_spacing = None
+            if 'spacing' in input_features.keys():
+                input_spacing = tuple([float(i) for i in input_features['spacing']])
+            elif '{}_spacing'.format(key) in input_features.keys():
+                input_spacing = tuple([float(i) for i in input_features['{}_spacing'.format(key)]])
             assert type(image_handle) is sitk.Image or input_spacing is not None, 'Either need to pass a SimpleITK ' \
                                                                                   'Image or "spacing" key'
             if input_spacing is None:
@@ -436,7 +438,7 @@ class Add_Images_And_Annotations(Image_Processor):
             image_handle = sitk.ReadImage(input_features[nifti_path_key])
             image_array = sitk.GetArrayFromImage(image_handle)
             input_features[out_key] = image_array.astype(dtype=dtype)
-            input_features['spacing'] = np.asarray(image_handle.GetSpacing(), dtype='float32')
+            input_features['{}_spacing'.format(out_key)] = np.asarray(image_handle.GetSpacing(), dtype='float32')
         return input_features
 
 
