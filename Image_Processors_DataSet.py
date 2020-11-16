@@ -22,7 +22,7 @@ class Decoder(object):
         self.d_type_dict = d_type_dict
 
 
-class Decode_Images_Annotations(Decoder):
+class DecodeImagesAnnotations(Decoder):
     def parse(self, image_features, *args, **kwargs):
         all_keys = list(image_features.keys())
         is_modern = False
@@ -86,6 +86,12 @@ class Decode_Images_Annotations(Decoder):
                                                     (image_features['dose_images'], image_features['dose_rows'],
                                                      image_features['dose_cols']))
         return image_features
+
+
+class Decode_Images_Annotations(DecodeImagesAnnotations):
+    def __init__(self, **kwargs):
+        print('Please move from using Decode_Images_Annotations to DecodeImagesAnnotations, same arguments are passed')
+        super().__init__(**kwargs)
 
 
 class Random_Noise(Image_Processor):
