@@ -27,16 +27,18 @@ class Decode_Images_Annotations(Decoder):
         all_keys = list(image_features.keys())
         is_modern = False
         for key in image_features.keys():
-            dtype = 'float'
-            if key in self.d_type_dict:
-                dtype = self.d_type_dict[key]
-            if key.find('size') == -1:
-                size_keys = [i for i in all_keys if i.find('size') != -1 and i.startswith(key)]  # Find all size keys
-                size_keys.sort(key=lambda x: x.split('_')[-1])
+            if key.find('size') != -1:
+                continue
+            size_keys = [i for i in all_keys if i.find('size') != -1 and i.startswith(key)]  # Find all size keys
+            size_keys.sort(key=lambda x: x.split('_')[-1])
+            if size_keys:
+                dtype = 'float'
+                if key in self.d_type_dict:
+                    dtype = self.d_type_dict[key]
                 out_size = tuple([image_features[i] for i in size_keys])
                 image_features[key] = tf.reshape(tf.io.decode_raw(image_features[key], out_type=dtype),
                                                  out_size)
-                is_modern = True
+            is_modern = True
         if not is_modern:  # To retain backwards compatibility
             print('Please update to the latest versions of the TFRecord maker')
             image_dtype = 'float'
