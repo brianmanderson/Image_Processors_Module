@@ -351,6 +351,12 @@ class Resample_LiTs(Image_Processor):
 class Resampler(Image_Processor):
     def __init__(self, resample_keys=('image', 'annotation'), resample_interpolators=('Linear', 'Nearest'),
                  desired_output_spacing=(None, None, None), make_512=False):
+        """
+        :param resample_keys: tuple of keys in input_features to resample
+        :param resample_interpolators: tuple of SimpleITK interpolators, 'Linear' or 'Nearest'
+        :param desired_output_spacing: desired output spacing, (row, col, z)
+        :param make_512: binary, make the image be 512x512?
+        """
         self.desired_output_spacing = desired_output_spacing
         self.resample_keys = resample_keys
         self.resample_interpolators = resample_interpolators
