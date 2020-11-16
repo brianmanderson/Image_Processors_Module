@@ -74,6 +74,11 @@ def return_example_proto(base_dictionary, image_dictionary_for_pickle={}, data_t
             if key not in image_dictionary_for_pickle:
                 image_dictionary_for_pickle[key] = tf.io.FixedLenFeature([], tf.int64)
         elif type(data) is np.ndarray:
+            for index, shape_value in enumerate(data.shape):
+                if '{}_size_{}'.format(key, index) not in base_dictionary:
+                    feature['{}_size_{}'.format(key, index)] = _int64_feature(tf.constant(shape_value, dtype='int64'))
+                    if key not in image_dictionary_for_pickle:
+                        image_dictionary_for_pickle[key] = tf.io.FixedLenFeature([], tf.int64)
             feature[key] = _bytes_feature(data.tostring())
             if key not in image_dictionary_for_pickle:
                 image_dictionary_for_pickle[key] = tf.io.FixedLenFeature([], tf.string)
@@ -636,9 +641,6 @@ class Distribute_into_3D(Image_Processor):
             image_features['annotation'] = annotation
             image_features['start'] = start
             image_features['stop'] = stop
-            image_features['image_size_0'] = image.shape[0]
-            image_features['image_size_1'] = image.shape[1]
-            image_features['image_size_2'] = image.shape[2]
             image_features['spacing'] = spacing
             for key in input_features.keys():
                 if key not in image_features.keys():
@@ -664,8 +666,6 @@ class Distribute_into_2D(Image_Processor):
             image_features['image_path'] = image_path
             image_features['image'] = image[index]
             image_features['annotation'] = annotation[index]
-            image_features['image_size_0'] = rows
-            image_features['image_size_1'] = cols
             image_features['spacing'] = spacing[:-1]
             for key in input_features.keys():
                 if key not in image_features.keys():
@@ -770,12 +770,6 @@ class DistributeIntoRecurrenceCubes(Image_Processor):
                 out_cube = np.pad(out_cube, pads, constant_values=np.min(out_cube))
                 temp_feature['image'] = out_cube
                 temp_feature['annotation'] = to_categorical(value, 2)
-                temp_feature['image_size_0'] = img_shape[0]
-                temp_feature['image_size_1'] = img_shape[1]
-                temp_feature['image_size_2'] = img_shape[2]
-                temp_feature['image_size_3'] = 2
-                temp_feature['annotation_size_0'] = 1
-                temp_feature['annotation_size_1'] = 2
                 wanted_keys = ('primary_image_path', 'out_path', 'out_file', 'spacing')
                 for key in wanted_keys:  # Bring along anything else we care about
                     if key not in temp_feature.keys():
