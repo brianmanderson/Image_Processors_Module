@@ -346,58 +346,61 @@ class Resample_LiTs(Image_Processor):
 
 
 class Resampler(Image_Processor):
-    def __init__(self, desired_output_spacing=(None, None, None), make_512=False, binary_annotation=True):
+    def __init__(self, desired_output_spacing=(None, None, None), make_512=False, resample_keys=('image', 'annotation'),
+                 resample_interpolators=('Linear', 'Nearest')):
         self.desired_output_spacing = desired_output_spacing
-        self.interpolator = 'Linear'
-        if binary_annotation:
-            self.interpolator = 'Nearest'
+        self.resample_keys = resample_keys
+        self.resample_interpolators = resample_interpolators
         self.make_512 = make_512
 
     def parse(self, input_features):
-        input_spacing = tuple([float(i) for i in input_features['spacing']])
-        image_handle = sitk.GetImageFromArray(input_features['image'])
-        image_handle.SetSpacing(input_spacing)
-        output_spacing = []
-        for index in range(3):
-            if self.desired_output_spacing[index] is None:
-                if input_spacing[index] < 0.5 and self.make_512:
-                    spacing = input_spacing[index] * 2
+        resampler = ImageResampler()
+        input_spacing = None
+        if 'spacing' in input_features.keys():
+            input_spacing = tuple([float(i) for i in input_features['spacing']])
+        for key, interpolator in zip(self.resample_keys, self.resample_interpolators):
+            assert key in input_features.keys(), 'Only pass a key to "resample_keys" if it is present in the features'
+            image_handle = input_features[key]
+            assert type(image_handle) is sitk.Image or input_spacing is not None, 'Either need to pass a SimpleITK ' \
+                                                                                  'Image or "spacing" key'
+            if input_spacing is None:
+                input_spacing = image_handle.GetSpacing()
+            if type(image_handle) is np.ndarray and input_spacing is not None:
+                image_handle = sitk.GetImageFromArray(image_handle)
+                image_handle.SetSpacing(input_spacing)
+
+            output_spacing = []
+            for index in range(3):
+                if self.desired_output_spacing[index] is None:
+                    if input_spacing[index] < 0.5 and self.make_512:
+                        spacing = input_spacing[index] * 2
+                    else:
+                        spacing = input_spacing[index]
+                    output_spacing.append(spacing)
                 else:
-                    spacing = input_spacing[index]
-                output_spacing.append(spacing)
-            else:
-                output_spacing.append(self.desired_output_spacing[index])
-        output_spacing = tuple(output_spacing)
-        if output_spacing != input_spacing:
-            resampler = ImageResampler()
-            print('Resampling {} to {}'.format(input_spacing, output_spacing))
-            image_handle = resampler.resample_image(input_image_handle=image_handle,
-                                                    output_spacing=output_spacing)
-            if len(input_features['annotation'].shape) == 3:
-                annotation_handle = sitk.GetImageFromArray(input_features['annotation'])
-                annotation_handle.SetSpacing(input_spacing)
-                annotation_handle = resampler.resample_image(input_image_handle=annotation_handle,
-                                                             output_spacing=output_spacing,
-                                                             interpolator=self.interpolator)
-            else:
-                annotation = input_features['annotation']
-                output = []
-                for i in range(annotation.shape[-1]):
-                    annotation_handle = sitk.GetArrayFromImage(annotation[..., i])
-                    annotation_handle.SetSpacing(input_spacing)
-                    resampled_handle = resampler.resample_image(input_image_handle=annotation_handle,
-                                                                output_spacing=output_spacing,
-                                                                interpolator=self.interpolator)
-                    output.append(sitk.GetArrayFromImage(resampled_handle)[..., None])
-                stacked = np.concatenate(output, axis=-1)
-                stacked[..., 0] = 1 - np.sum(stacked[..., 1:], axis=-1)
-                annotation_handle = sitk.GetImageFromArray(stacked)
-                annotation_handle.SetSpacing(image_handle.GetSpacing())
-                annotation_handle.SetDirection(image_handle.GetDirection())
-                annotation_handle.SetOrigin(image_handle.GetOrigin())
-            input_features['image'] = sitk.GetArrayFromImage(image_handle)
-            input_features['annotation'] = sitk.GetArrayFromImage(annotation_handle)
-            input_features['spacing'] = np.asarray(annotation_handle.GetSpacing(), dtype='float32')
+                    output_spacing.append(self.desired_output_spacing[index])
+            output_spacing = tuple(output_spacing)
+            if output_spacing != input_spacing:
+                print('Resampling {} to {}'.format(input_spacing, output_spacing))
+                image_array = sitk.GetArrayFromImage(image_handle)
+                if len(image_array.shape) == 3:
+                    image_handle = resampler.resample_image(input_image_handle=image_handle,
+                                                            output_spacing=output_spacing,
+                                                            interpolator=interpolator)
+                    input_features[key] = sitk.GetArrayFromImage(image_handle)
+                else:
+                    output = []
+                    for i in range(image_array.shape[-1]):
+                        reduced_handle = sitk.GetImageFromArray(image_array[..., i])
+                        reduced_handle.SetSpacing(input_spacing)
+                        resampled_handle = resampler.resample_image(input_image_handle=reduced_handle,
+                                                                    output_spacing=output_spacing,
+                                                                    interpolator=interpolator)
+                        output.append(sitk.GetArrayFromImage(resampled_handle)[..., None])
+                    stacked = np.concatenate(output, axis=-1)
+                    stacked[..., 0] = 1 - np.sum(stacked[..., 1:], axis=-1)
+                    input_features[key] = stacked
+        input_features['spacing'] = np.asarray(self.desired_output_spacing, dtype='float32')
         return input_features
 
 
