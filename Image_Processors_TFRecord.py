@@ -376,7 +376,9 @@ class Resampler(Image_Processor):
                                                                                   'Image or "spacing" key'
             if input_spacing is None:
                 input_spacing = image_handle.GetSpacing()
-            if type(image_handle) is np.ndarray and input_spacing is not None:
+            image_array = None
+            if type(image_handle) is np.ndarray:
+                image_array = image_handle
                 image_handle = sitk.GetImageFromArray(image_handle)
                 image_handle.SetSpacing(input_spacing)
 
@@ -393,7 +395,8 @@ class Resampler(Image_Processor):
             output_spacing = tuple(output_spacing)
             if output_spacing != input_spacing:
                 print('Resampling {} to {}'.format(input_spacing, output_spacing))
-                image_array = sitk.GetArrayFromImage(image_handle)
+                if image_array is None:
+                    image_array = sitk.GetArrayFromImage(image_handle)
                 if len(image_array.shape) == 3:
                     image_handle = resampler.resample_image(input_image_handle=image_handle,
                                                             output_spacing=output_spacing,
