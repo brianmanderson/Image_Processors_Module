@@ -768,22 +768,34 @@ def expand_box_indexes(z_start, z_stop, r_start, r_stop, c_start, c_stop, annota
 
 
 class Box_Images(Image_Processor):
-    def __init__(self, wanted_vals_for_bbox=None,
+    def __init__(self, image_key='image', annotation_key='annotation', wanted_vals_for_bbox=None,
                  bounding_box_expansion=(5, 10, 10), power_val_z=1, power_val_r=1,
                  power_val_c=1, min_images=None, min_rows=None, min_cols=None):
-        '''
-        :param wanted_vals_for_bbox: a list of values in integer form for bboxes
-        :param box_imaages_and_annotations: True/False box up the images now?
-        '''
+        """
+        :param image_key: key which corresponds to an image to be normalized
+        :param annotation_key: key which corresponds to an annotation image used for normalization
+        :param wanted_vals_for_bbox:
+        :param bounding_box_expansion:
+        :param power_val_z:
+        :param power_val_r:
+        :param power_val_c:
+        :param min_images:
+        :param min_rows:
+        :param min_cols:
+        """
         assert type(wanted_vals_for_bbox) is list, 'Provide a list for bboxes'
         self.wanted_vals_for_bbox = wanted_vals_for_bbox
         self.bounding_box_expansion = bounding_box_expansion
         self.power_val_z, self.power_val_r, self.power_val_c = power_val_z, power_val_r, power_val_c
         self.min_images, self.min_rows, self.min_cols = min_images, min_rows, min_cols
+        self.image_key, self.annotation_key = image_key, annotation_key
 
     def parse(self, input_features):
-        annotation = input_features['annotation']
-        image = input_features['image']
+        for key in [self.image_key, self.annotation_key]:
+            assert key in input_features.keys(), 'Make sure the key you are referring to is present in the features, ' \
+                                                 '{} was not found'.format(key)
+        annotation = input_features[self.annotation_key]
+        image = input_features[self.image_key]
         if len(annotation.shape) > 3:
             mask = np.zeros(annotation.shape[:-1])
             argmax_annotation = np.argmax(annotation, axis=-1)
@@ -847,8 +859,8 @@ class Box_Images(Image_Processor):
             annotation_cube = np.pad(annotation_cube, pads)
             if len(annotation.shape) > 3:
                 annotation_cube[..., 0] = 1 - np.sum(annotation_cube[..., 1:], axis=-1)
-            input_features['annotation'] = annotation_cube
-            input_features['image'] = image_cube
+            input_features[self.annotation_key] = annotation_cube
+            input_features[self.image_key] = image_cube
         return input_features
 
 
