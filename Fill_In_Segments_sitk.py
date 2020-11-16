@@ -25,7 +25,7 @@ def get_bounding_box_indexes(annotation):
     '''
     indexes = np.where(np.any(annotation, axis=(0, 1)) == True)[0]
     min_c_s, max_c_s = indexes[0], indexes[-1]
-    return min_z_s, int(max_z_s + 1), min_r_s, int(max_r_s + 1), min_c_s, int(max_c_s + 1)
+    return min_z_s, max_z_s, min_r_s, max_r_s, min_c_s, max_c_s
 
 
 def remove_non_liver(annotations, threshold=0.5, max_volume=9999999.0, min_volume=0.0, max_area=99999.0, min_area=0.0,
