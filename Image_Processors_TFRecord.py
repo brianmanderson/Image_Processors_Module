@@ -424,15 +424,19 @@ class Cast_Data(Image_Processor):
 
 
 class Add_Images_And_Annotations(Image_Processor):
+    def __init__(self, nifti_path_keys=('image_path', 'annotation_path'), out_keys=('image', 'annotation'),
+                 dtypes=('float32', 'int8')):
+        self.nifti_path_keys, self.out_keys, self.dtypes = nifti_path_keys, out_keys, dtypes
+
     def parse(self, input_features):
-        image_path = input_features['image_path']
-        annotation_path = input_features['annotation_path']
-        image_handle, annotation_handle = sitk.ReadImage(image_path), sitk.ReadImage(annotation_path)
-        annotation = sitk.GetArrayFromImage(annotation_handle).astype('int8')
-        image = sitk.GetArrayFromImage(image_handle).astype('float32')
-        input_features['image'] = image
-        input_features['annotation'] = annotation
-        input_features['spacing'] = np.asarray(annotation_handle.GetSpacing(), dtype='float32')
+        for key in self.nifti_path_keys:
+            assert key in input_features.keys(), 'Need to pass a nifti_path_key that is inside the input_features. ' \
+                                                 '{} are present'.format(input_features.keys())
+        for nifti_path, out_key, dtype in zip(self.nifti_path_keys, self.out_keys, self.dtypes):
+            image_handle = sitk.ReadImage(nifti_path)
+            image_array = sitk.GetArrayFromImage(image_handle)
+            input_features[out_key] = image_array.astype(dtype=dtype)
+            input_features['spacing'] = np.asarray(image_handle.GetSpacing(), dtype='float32')
         return input_features
 
 
