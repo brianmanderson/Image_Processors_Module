@@ -305,13 +305,16 @@ class Combine_Annotations(Image_Processor):
 
 
 class To_Categorical(Image_Processor):
-    def __init__(self, num_classes=None):
+    def __init__(self, num_classes=None, annotation_key='annotation'):
         self.num_classes = num_classes
+        self.annotation_key = annotation_key
 
     def parse(self, input_features):
-        annotation = input_features['annotation']
-        input_features['annotation'] = to_categorical(annotation, self.num_classes)
-        input_features['num_classes'] = input_features['annotation'].shape[-1]
+        assert self.annotation_key in input_features.keys(), 'Make sure the key you are referring to is present ' \
+                                                             'in the features,  {} ' \
+                                                             'was not found'.format(self.annotation_key)
+        input_features[self.annotation_key] = to_categorical(input_features[self.annotation_key], self.num_classes)
+        input_features['num_classes'] = self.num_classes
         return input_features
 
 
@@ -700,7 +703,8 @@ class Threshold_Images(Image_Processor):
 
 
 class Normalize_to_annotation(Image_Processor):
-    def __init__(self, image_key='image', annotation_key='annotation', annotation_value_list=None, mirror_max=False, lower_percentile=None, upper_percentile=None):
+    def __init__(self, image_key='image', annotation_key='annotation', annotation_value_list=None, mirror_max=False,
+                 lower_percentile=None, upper_percentile=None):
         """
         :param image_key: key which corresponds to an image to be normalized
         :param annotation_key: key which corresponds to an annotation image used for normalization
