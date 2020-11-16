@@ -90,22 +90,25 @@ def return_example_proto(base_dictionary, image_dictionary_for_pickle={}, data_t
     return example_proto
 
 
-def serialize_example(image_path, annotation_path, image_processors=None, record_writer=None, verbose=False):
-    get_features(image_path, annotation_path, image_processors=image_processors, record_writer=record_writer,
+def serialize_example(input_features_dictionary, image_processors=None, record_writer=None, verbose=False):
+    get_features(input_features_dictionary, image_processors=image_processors, record_writer=record_writer,
                  verbose=verbose)
 
 
 class Record_Writer(Image_Processor):
-    def __init__(self, file_path=None):
-        assert file_path is not None, "You need to pass a base file path..."
-        self.file_path = file_path
-        if not os.path.exists(file_path):
-            os.makedirs(file_path)
+    def __init__(self, out_path=None, out_file=None):
+        assert out_path is not None, "You need to pass a base file path..."
+        self.out_path = out_path
+        self.out_file = out_file
+        if not os.path.exists(out_path):
+            os.makedirs(out_path)
 
     def parse(self, input_features):
         keys = list(input_features.keys())
-        image_name = os.path.split(input_features[keys[0]]['image_path'])[-1].split('.nii')[0]
-        filename = os.path.join(self.file_path, '{}.tfrecord'.format(image_name))
+        filename = self.out_file
+        if self.out_file is None:
+            image_name = os.path.split(input_features[keys[0]]['image_path'])[-1].split('.nii')[0]
+            filename = os.path.join(self.out_path, '{}.tfrecord'.format(image_name))
         features = OrderedDict()
         d_type = OrderedDict()
         writer = tf.io.TFRecordWriter(filename)
@@ -124,10 +127,7 @@ class Record_Writer(Image_Processor):
         return {}
 
 
-def get_features(image_path, annotation_path, image_processors=None, record_writer=None, verbose=0):
-    features = OrderedDict()
-    features['image_path'] = image_path
-    features['annotation_path'] = annotation_path
+def get_features(features, image_processors=None, record_writer=None, verbose=0):
     if image_processors is not None:
         for image_processor in image_processors:
             features, _ = down_dictionary(features, OrderedDict(), 0)
