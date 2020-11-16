@@ -744,9 +744,14 @@ class Normalize_to_annotation(Image_Processor):
                                                  '{} was not found'.format(key)
         images = input_features[self.image_key]
         annotation = input_features[self.annotation_key]
-        mask = np.zeros(annotation.shape)
-        for value in self.annotation_value_list:
-            mask += annotation == value
+        if len(annotation.shape) == 3:
+            mask = np.zeros(annotation.shape)
+            for value in self.annotation_value_list:
+                mask += annotation == value
+        else:
+            mask = np.zeros(annotation.shape[:-1])
+            for value in self.annotation_value_list:
+                mask += annotation[..., value]
         data = images[mask > 0].flatten()
         if self.lower_percentile is not None and self.upper_percentile is not None:
             lower_bound = np.percentile(data, 25)
