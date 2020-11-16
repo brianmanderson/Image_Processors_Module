@@ -310,9 +310,7 @@ class To_Categorical(Image_Processor):
         self.annotation_key = annotation_key
 
     def parse(self, input_features):
-        assert self.annotation_key in input_features.keys(), 'Make sure the key you are referring to is present ' \
-                                                             'in the features,  {} ' \
-                                                             'was not found'.format(self.annotation_key)
+        _check_keys_(input_features=input_features, keys=self.annotation_key)
         input_features[self.annotation_key] = to_categorical(input_features[self.annotation_key], self.num_classes)
         input_features['num_classes_{}'.format(self.annotation_key)] = self.num_classes
         return input_features
@@ -364,8 +362,8 @@ class Resampler(Image_Processor):
 
     def parse(self, input_features):
         resampler = ImageResampler()
+        _check_keys_(input_features=input_features, keys=self.resample_keys)
         for key, interpolator in zip(self.resample_keys, self.resample_interpolators):
-            assert key in input_features.keys(), 'Only pass a key to "resample_keys" if it is present in the features'
             image_handle = input_features[key]
             input_spacing = None
             if 'spacing' in input_features.keys():
@@ -440,9 +438,7 @@ class Add_Images_And_Annotations(Image_Processor):
         self.nifti_path_keys, self.out_keys, self.dtypes = nifti_path_keys, out_keys, dtypes
 
     def parse(self, input_features):
-        for key in self.nifti_path_keys:
-            assert key in input_features.keys(), 'Need to pass a nifti_path_key that is inside the input_features. ' \
-                                                 '{} are present'.format(input_features.keys())
+        _check_keys_(input_features=input_features, keys=self.nifti_path_keys)
         for nifti_path_key, out_key, dtype in zip(self.nifti_path_keys, self.out_keys, self.dtypes):
             image_handle = sitk.ReadImage(input_features[nifti_path_key])
             image_array = sitk.GetArrayFromImage(image_handle)
@@ -695,6 +691,28 @@ class NormalizeParotidMR(Image_Processor):
         return input_features
 
 
+def _check_keys_(input_features, keys):
+    if type(keys) is list or type(keys) is tuple:
+        for key in keys:
+            assert key in input_features.keys(), 'Make sure the key you are referring to is present in the features, ' \
+                                                 '{} was not found'.format(key)
+    else:
+        assert keys in input_features.keys(), 'Make sure the key you are referring to is present in the features, ' \
+                                              '{} was not found'.format(keys)
+
+
+class DivideByValue(Image_Processor):
+    def __init__(self, image_keys=('image'), value=1.):
+        """
+        :param image_keys: tuple of keys to divide by the value
+        :param value: value by which to divide by
+        """
+        self.image_keys = image_keys
+        self.value = value
+
+    def parse(self, input_features):
+        _check_keys_(input_features=input_features, keys=self.image_keys)
+
 class Threshold_Images(Image_Processor):
     def __init__(self, image_key='image', lower_bound=-np.inf, upper_bound=np.inf, divide=True):
         """
@@ -708,8 +726,7 @@ class Threshold_Images(Image_Processor):
         self.divide = divide
 
     def parse(self, image_features, *args, **kwargs):
-        assert self.image_key in image_features.keys(), 'Make sure the key you are referring to is present in the ' \
-                                                        'features,  {} was not found'.format(self.image_key)
+        _check_keys_(input_features=image_features, keys=self.image_key)
         image = image_features[self.image_key]
         image[image < self.lower] = self.lower
         image[image > self.upper] = self.upper
@@ -739,9 +756,7 @@ class Normalize_to_annotation(Image_Processor):
         self.annotation_key = annotation_key
 
     def parse(self, input_features):
-        for key in [self.image_key, self.annotation_key]:
-            assert key in input_features.keys(), 'Make sure the key you are referring to is present in the features, ' \
-                                                 '{} was not found'.format(key)
+        _check_keys_(input_features=input_features, keys=(self.image_key, self.annotation_key))
         images = input_features[self.image_key]
         annotation = input_features[self.annotation_key]
         if len(annotation.shape) == 3:
@@ -821,9 +836,7 @@ class Box_Images(Image_Processor):
         self.image_key, self.annotation_key = image_key, annotation_key
 
     def parse(self, input_features):
-        for key in [self.image_key, self.annotation_key]:
-            assert key in input_features.keys(), 'Make sure the key you are referring to is present in the features, ' \
-                                                 '{} was not found'.format(key)
+        _check_keys_(input_features=input_features, keys=(self.image_key, self.annotation_key))
         annotation = input_features[self.annotation_key]
         image = input_features[self.image_key]
         if len(annotation.shape) > 3:
