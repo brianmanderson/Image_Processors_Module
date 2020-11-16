@@ -1,4 +1,5 @@
 __author__ = 'Brian M Anderson'
+
 # Created on 4/28/2020
 import SimpleITK as sitk
 import numpy as np
@@ -11,13 +12,12 @@ from math import ceil, floor
 from .Plot_And_Scroll_Images.Plot_Scroll_Images import plot_scroll_Image, plt
 
 
-
 class Image_Processor(object):
     def parse(self, input_features):
         return input_features
 
 
-def save_obj(path, obj): # Save almost anything.. dictionary, list, etc.
+def save_obj(path, obj):  # Save almost anything.. dictionary, list, etc.
     if path.find('.pkl') == -1:
         path += '.pkl'
     with open(path, 'wb') as f:
@@ -105,7 +105,7 @@ class Record_Writer(Image_Processor):
     def parse(self, input_features):
         keys = list(input_features.keys())
         image_name = os.path.split(input_features[keys[0]]['image_path'])[-1].split('.nii')[0]
-        filename = os.path.join(self.file_path,'{}.tfrecord'.format(image_name))
+        filename = os.path.join(self.file_path, '{}.tfrecord'.format(image_name))
         features = OrderedDict()
         d_type = OrderedDict()
         writer = tf.io.TFRecordWriter(filename)
@@ -171,8 +171,8 @@ def to_categorical(y, num_classes=None, dtype='float32'):
 
 def get_start_stop(annotation, extension=np.inf, desired_val=1):
     if len(annotation.shape) > 3:
-        annotation = np.argmax(annotation,axis=-1)
-    non_zero_values = np.where(np.max(annotation,axis=(1,2)) >= desired_val)[0]
+        annotation = np.argmax(annotation, axis=-1)
+    non_zero_values = np.where(np.max(annotation, axis=(1, 2)) >= desired_val)[0]
     start, stop = -1, -1
     if non_zero_values.any():
         start = int(non_zero_values[0])
@@ -182,12 +182,12 @@ def get_start_stop(annotation, extension=np.inf, desired_val=1):
     return start, stop
 
 
-def get_bounding_boxes(annotation_handle,value):
+def get_bounding_boxes(annotation_handle, value):
     Connected_Component_Filter = sitk.ConnectedComponentImageFilter()
     RelabelComponent = sitk.RelabelComponentImageFilter()
     RelabelComponent.SortByObjectSizeOn()
     stats = sitk.LabelShapeStatisticsImageFilter()
-    thresholded_image = sitk.BinaryThreshold(annotation_handle,lowerThreshold=value,upperThreshold=value+1)
+    thresholded_image = sitk.BinaryThreshold(annotation_handle, lowerThreshold=value, upperThreshold=value + 1)
     connected_image = Connected_Component_Filter.Execute(thresholded_image)
     connected_image = RelabelComponent.Execute(connected_image)
     stats.Execute(connected_image)
@@ -204,10 +204,10 @@ class Remove_Smallest_Structures(object):
 
     def remove_smallest_component(self, annotation_handle):
         label_image = self.Connected_Component_Filter.Execute(
-            sitk.BinaryThreshold(sitk.Cast(annotation_handle,sitk.sitkFloat32), lowerThreshold=0.01,
+            sitk.BinaryThreshold(sitk.Cast(annotation_handle, sitk.sitkFloat32), lowerThreshold=0.01,
                                  upperThreshold=np.inf))
         label_image = self.RelabelComponent.Execute(label_image)
-        output = sitk.BinaryThreshold(sitk.Cast(label_image,sitk.sitkFloat32), lowerThreshold=0.1,upperThreshold=1.0)
+        output = sitk.BinaryThreshold(sitk.Cast(label_image, sitk.sitkFloat32), lowerThreshold=0.1, upperThreshold=1.0)
         return output
 
 
@@ -225,13 +225,13 @@ class Remove_Lowest_Probabilty_Structure(object):
         if self.Connected_Component_Filter.GetObjectCount() < 2:
             return image_slice
         current = 0
-        for value in range(1, self.Connected_Component_Filter.GetObjectCount()+1):
+        for value in range(1, self.Connected_Component_Filter.GetObjectCount() + 1):
             mask = sitk.GetArrayFromImage(connected_image == value)
-            prob = np.max(image_slice[mask==1])
+            prob = np.max(image_slice[mask == 1])
             if prob > current:
                 current = prob
                 out_mask = mask
-        image_slice[out_mask==0] = 0
+        image_slice[out_mask == 0] = 0
         return image_slice
 
 
@@ -248,51 +248,52 @@ class Gaussian_Uncertainty(Image_Processor):
         annotations = input_features['annotation']
         spacing = input_features['spacing']
         filtered = np.zeros(annotations.shape)
-        filtered[...,0] = annotations[...,0]
+        filtered[..., 0] = annotations[..., 0]
         if len(annotations.shape) == 3:
             num_classes = np.max(annotations)
         else:
             num_classes = annotations.shape[-1]
-        for i in range(1,num_classes):
-            sigma = self.sigma[i-1]
+        for i in range(1, num_classes):
+            sigma = self.sigma[i - 1]
             if type(sigma) is not list:
-                sigma = [sigma/spacing[i] for i in range(3)]
+                sigma = [sigma / spacing[i] for i in range(3)]
             else:
-                sigma = [sigma[i]/spacing[i] for i in range(3)]
-            annotation = annotations[...,i]
+                sigma = [sigma[i] / spacing[i] for i in range(3)]
+            annotation = annotations[..., i]
             if sigma[-1] != np.min(sigma):
                 print('Make sure you put this in as x, y, z. Not z, x, y!')
-            sigma = [sigma[-1], sigma[0], sigma[1]] # now make it match image shape [z, x, y]
-            filtered[...,i] = gaussian_filter(annotation,sigma=sigma,mode='constant')
-        filtered[annotations[...,0] == 1] = 0
-        filtered[...,0] = annotations[...,0]
+            sigma = [sigma[-1], sigma[0], sigma[1]]  # now make it match image shape [z, x, y]
+            filtered[..., i] = gaussian_filter(annotation, sigma=sigma, mode='constant')
+        filtered[annotations[..., 0] == 1] = 0
+        filtered[..., 0] = annotations[..., 0]
         # Now we've normed, but still have the problem that unconnected structures can still be there..
-        for i in range(1,num_classes):
-            annotation = filtered[...,i]
+        for i in range(1, num_classes):
+            annotation = filtered[..., i]
             annotation[annotation < 0.05] = 0
-            slices = np.where(np.max(annotation,axis=(1,2))>0)
+            slices = np.where(np.max(annotation, axis=(1, 2)) > 0)
             for slice in slices[0]:
                 annotation[slice] = remove_lowest_probability.remove_lowest_probability(annotation[slice])
-            mask_handle = remove_smallest.remove_smallest_component(sitk.GetImageFromArray(annotation)>0)
+            mask_handle = remove_smallest.remove_smallest_component(sitk.GetImageFromArray(annotation) > 0)
             mask = sitk.GetArrayFromImage(mask_handle)
-            masked_filter = filtered[...,i]*mask
+            masked_filter = filtered[..., i] * mask
             filtered[..., i] = masked_filter
         norm = np.sum(filtered, axis=-1)
-        filtered[...,0] += (norm == 0).astype('int')
+        filtered[..., 0] += (norm == 0).astype('int')
         norm[norm == 0] = 1
-        filtered /= norm[...,None]
+        filtered /= norm[..., None]
         input_features['annotation'] = filtered
         return input_features
 
 
 class Combine_Annotations(Image_Processor):
-    def __init__(self, annotation_input=[5,6,7,8], to_annotation=5):
+    def __init__(self, annotation_input=[5, 6, 7, 8], to_annotation=5):
         self.annotation_input = annotation_input
         self.to_annotation = to_annotation
 
     def parse(self, input_features):
         annotation = input_features['annotation']
-        assert len(annotation.shape) == 3 or len(annotation.shape) == 4, 'To combine annotations the size has to be 3 or 4'
+        assert len(annotation.shape) == 3 or len(
+            annotation.shape) == 4, 'To combine annotations the size has to be 3 or 4'
         if len(annotation.shape) == 3:
             for val in self.annotation_input:
                 annotation[annotation == val] = self.to_annotation
@@ -309,13 +310,13 @@ class To_Categorical(Image_Processor):
 
     def parse(self, input_features):
         annotation = input_features['annotation']
-        input_features['annotation'] = to_categorical(annotation,self.num_classes)
+        input_features['annotation'] = to_categorical(annotation, self.num_classes)
         input_features['num_classes'] = input_features['annotation'].shape[-1]
         return input_features
 
 
 class Resample_LiTs(Image_Processor):
-    def __init__(self, desired_output_spacing=(None,None,None)):
+    def __init__(self, desired_output_spacing=(None, None, None)):
         self.desired_output_spacing = desired_output_spacing
 
     def parse(self, input_features):
@@ -334,7 +335,7 @@ class Resample_LiTs(Image_Processor):
         output_spacing = tuple(output_spacing)
         if output_spacing != input_spacing:
             resampler = ImageResampler()
-            print('Resampling {} to {}'.format(input_spacing,output_spacing))
+            print('Resampling {} to {}'.format(input_spacing, output_spacing))
             image_handle = resampler.resample_image(input_image_handle=image_handle, output_spacing=output_spacing)
             annotation_handle = resampler.resample_image(input_image_handle=annotation_handle,
                                                          output_spacing=output_spacing)
@@ -345,7 +346,7 @@ class Resample_LiTs(Image_Processor):
 
 
 class Resampler(Image_Processor):
-    def __init__(self, desired_output_spacing=(None,None,None), make_512=False, binary_annotation=True):
+    def __init__(self, desired_output_spacing=(None, None, None), make_512=False, binary_annotation=True):
         self.desired_output_spacing = desired_output_spacing
         self.interpolator = 'Linear'
         if binary_annotation:
@@ -369,7 +370,7 @@ class Resampler(Image_Processor):
         output_spacing = tuple(output_spacing)
         if output_spacing != input_spacing:
             resampler = ImageResampler()
-            print('Resampling {} to {}'.format(input_spacing,output_spacing))
+            print('Resampling {} to {}'.format(input_spacing, output_spacing))
             image_handle = resampler.resample_image(input_image_handle=image_handle,
                                                     output_spacing=output_spacing)
             if len(input_features['annotation'].shape) == 3:
@@ -389,7 +390,7 @@ class Resampler(Image_Processor):
                                                                 interpolator=self.interpolator)
                     output.append(sitk.GetArrayFromImage(resampled_handle)[..., None])
                 stacked = np.concatenate(output, axis=-1)
-                stacked[...,0] = 1-np.sum(stacked[...,1:],axis=-1)
+                stacked[..., 0] = 1 - np.sum(stacked[..., 1:], axis=-1)
                 annotation_handle = sitk.GetImageFromArray(stacked)
                 annotation_handle.SetSpacing(image_handle.GetSpacing())
                 annotation_handle.SetDirection(image_handle.GetDirection())
@@ -432,7 +433,7 @@ class Add_Images_And_Annotations(Image_Processor):
 class Add_Dose(Image_Processor):
     def parse(self, input_features):
         image_path = input_features['image_path']
-        dose_path = image_path.replace('Data','Dose')
+        dose_path = image_path.replace('Data', 'Dose')
         dose_handle = sitk.ReadImage(dose_path)
         dose = sitk.GetArrayFromImage(dose_handle).astype('float32')
         spacing = dose_handle.GetSpacing()
@@ -468,7 +469,7 @@ class Normalize_MRI(Image_Processor):
 
         normalizationFilter = sitk.IntensityWindowingImageFilter()
         upperPerc = np.percentile(image, 99)
-        lowerPerc = np.percentile(image,1)
+        lowerPerc = np.percentile(image, 1)
 
         normalizationFilter.SetOutputMaximum(255.0)
         normalizationFilter.SetOutputMinimum(0.0)
@@ -486,14 +487,13 @@ class N4BiasCorrection(Image_Processor):
     def parse(self, input_features):
         image_handle = sitk.GetImageFromArray(input_features['image'])
         corrector = sitk.N4BiasFieldCorrectionImageFilter()
-        corrector.SetMaximumNumberOfIterations([int(2)*2])
+        corrector.SetMaximumNumberOfIterations([int(2) * 2])
         try:
             N4_normalized_image = corrector.Execute(image_handle)
         except RuntimeError:
             N4_normalized_image = corrector.Execute(image_handle)
         input_features['image'] = sitk.GetArrayFromImage(N4_normalized_image)
         return input_features
-
 
 
 class Split_Disease_Into_Cubes(Image_Processor):
@@ -535,20 +535,20 @@ class Split_Disease_Into_Cubes(Image_Processor):
                 image = image_base[z_start:z_stop, r_start:r_stop, c_start:c_stop]
                 annotation = annotation_base[z_start:z_stop, r_start:r_stop, c_start:c_stop]
 
-                stack_image, stack_annotation = [image[None,...]], [annotation[None,...]]
+                stack_image, stack_annotation = [image[None, ...]], [annotation[None, ...]]
                 for axis in range(3):
                     output_images = []
                     output_annotations = []
                     for i in stack_image:
-                        split = i.shape[axis+1] // self.cube_size[axis]
+                        split = i.shape[axis + 1] // self.cube_size[axis]
                         if split > 1:
-                            output_images += np.array_split(i, split, axis=axis+1)
+                            output_images += np.array_split(i, split, axis=axis + 1)
                         else:
                             output_images += [i]
                     for i in stack_annotation:
-                        split = i.shape[axis+1] // self.cube_size[axis]
+                        split = i.shape[axis + 1] // self.cube_size[axis]
                         if split > 1:
-                            output_annotations += np.array_split(i, split, axis=axis+1)
+                            output_annotations += np.array_split(i, split, axis=axis + 1)
                         else:
                             output_annotations += [i]
                     stack_image = output_images
@@ -586,9 +586,9 @@ class Distribute_into_3D(Image_Processor):
         spacing = input_features['spacing']
         z_images_base, rows, cols = image_base.shape
         if self.max_rows != np.inf:
-            rows = min([rows,self.max_rows])
+            rows = min([rows, self.max_rows])
         if self.max_cols != np.inf:
-            cols = min([cols,self.max_cols])
+            cols = min([cols, self.max_cols])
         image_base, annotation_base = image_base[:, :rows, :cols], annotation_base[:, :rows, :cols]
         step = min([self.max_z, z_images_base])
         for index in range(z_images_base // step + 1):
@@ -611,7 +611,7 @@ class Distribute_into_3D(Image_Processor):
                     continue
             start, stop = get_start_stop(annotation, extension=0, desired_val=self.desired_val)
             if start == -1 or stop == -1:
-                continue # no annotation here
+                continue  # no annotation here
             image_features['image_path'] = image_path
             image_features['image'] = image
             image_features['annotation'] = annotation
@@ -623,7 +623,7 @@ class Distribute_into_3D(Image_Processor):
             image_features['spacing'] = spacing
             for key in input_features.keys():
                 if key not in image_features.keys():
-                    image_features[key] = input_features[key] # Pass along all other keys.. be careful
+                    image_features[key] = input_features[key]  # Pass along all other keys.. be careful
             out_features['Image_{}'.format(index)] = image_features
         input_features = out_features
         return input_features
@@ -650,7 +650,7 @@ class Distribute_into_2D(Image_Processor):
             image_features['spacing'] = spacing[:-1]
             for key in input_features.keys():
                 if key not in image_features.keys():
-                    image_features[key] = input_features[key] # Pass along all other keys.. be careful
+                    image_features[key] = input_features[key]  # Pass along all other keys.. be careful
             out_features['Image_{}'.format(index)] = image_features
         input_features = out_features
         return input_features
@@ -663,13 +663,13 @@ class NormalizeParotidMR(Image_Processor):
         counts, bins = np.histogram(data, bins=1000)
         count_index = 0
         count_value = 0
-        while count_value/np.sum(counts) < .3: # Throw out the bottom 30 percent of data, as that is usually just 0s
+        while count_value / np.sum(counts) < .3:  # Throw out the bottom 30 percent of data, as that is usually just 0s
             count_value += counts[count_index]
             count_index += 1
         min_bin = bins[count_index]
-        data = data[data>min_bin]
+        data = data[data > min_bin]
         mean_val, std_val = np.mean(data), np.std(data)
-        images = (images - mean_val)/std_val
+        images = (images - mean_val) / std_val
         input_features['image'] = images
         return input_features
 
@@ -685,8 +685,8 @@ class Threshold_Images(Image_Processor):
 
     def parse(self, image_features, *args, **kwargs):
         image = image_features['image']
-        image[image<self.lower] = self.lower
-        image[image>self.upper] = self.upper
+        image[image < self.lower] = self.lower
+        image[image > self.upper] = self.upper
         image = image / (self.upper - self.lower)
         image_features['image'] = image
         return image_features
@@ -711,8 +711,8 @@ class Normalize_to_annotation(Image_Processor):
             mask += annotation == value
         data = images[mask > 0].flatten()
         if self.lower_percentile is not None and self.upper_percentile is not None:
-            lower_bound = np.percentile(data,25)
-            upper_bound = np.percentile(data,75)
+            lower_bound = np.percentile(data, 25)
+            upper_bound = np.percentile(data, 75)
             data = data[np.where((data >= lower_bound) & (data <= upper_bound))]
             mean_val, std_val = np.mean(data), np.std(data)
             images = (images - mean_val) / std_val
@@ -745,25 +745,25 @@ class Normalize_to_annotation(Image_Processor):
 
 
 def expand_box_indexes(z_start, z_stop, r_start, r_stop, c_start, c_stop, annotation_shape, bounding_box_expansion):
-    z_start = max([0, z_start - floor(bounding_box_expansion[0]/2)])
-    z_stop = min([annotation_shape[0], z_stop + ceil(bounding_box_expansion[0]/2)])
-    r_start = max([0, r_start - floor(bounding_box_expansion[1]/2)])
-    r_stop = min([annotation_shape[1], r_stop + ceil(bounding_box_expansion[1]/2)])
-    c_start = max([0, c_start - floor(bounding_box_expansion[2]/2)])
-    c_stop = min([annotation_shape[2], c_stop + ceil(bounding_box_expansion[2]/2)])
+    z_start = max([0, z_start - floor(bounding_box_expansion[0] / 2)])
+    z_stop = min([annotation_shape[0], z_stop + ceil(bounding_box_expansion[0] / 2)])
+    r_start = max([0, r_start - floor(bounding_box_expansion[1] / 2)])
+    r_stop = min([annotation_shape[1], r_stop + ceil(bounding_box_expansion[1] / 2)])
+    c_start = max([0, c_start - floor(bounding_box_expansion[2] / 2)])
+    c_stop = min([annotation_shape[2], c_stop + ceil(bounding_box_expansion[2] / 2)])
     return z_start, z_stop, r_start, r_stop, c_start, c_stop
 
 
 class Box_Images(Image_Processor):
     def __init__(self, wanted_vals_for_bbox=None,
-                 bounding_box_expansion=(5,10,10), power_val_z=1, power_val_r=1,
+                 bounding_box_expansion=(5, 10, 10), power_val_z=1, power_val_r=1,
                  power_val_c=1, min_images=None, min_rows=None, min_cols=None):
         '''
         :param wanted_vals_for_bbox: a list of values in integer form for bboxes
         :param box_imaages_and_annotations: True/False box up the images now?
         '''
         assert type(wanted_vals_for_bbox) is list, 'Provide a list for bboxes'
-        self.wanted_vals_for_bbox=wanted_vals_for_bbox
+        self.wanted_vals_for_bbox = wanted_vals_for_bbox
         self.bounding_box_expansion = bounding_box_expansion
         self.power_val_z, self.power_val_r, self.power_val_c = power_val_z, power_val_r, power_val_c
         self.min_images, self.min_rows, self.min_cols = min_images, min_rows, min_cols
@@ -781,7 +781,7 @@ class Box_Images(Image_Processor):
             for val in self.wanted_vals_for_bbox:
                 mask[annotation == val] = 1
         for val in [1]:
-            add_indexes = Add_Bounding_Box_Indexes([val],label_name='mask')
+            add_indexes = Add_Bounding_Box_Indexes([val], label_name='mask')
             input_features['mask'] = mask
             add_indexes.parse(input_features)
             del input_features['mask']
@@ -808,7 +808,7 @@ class Box_Images(Image_Processor):
             min_images, min_rows, min_cols = z_total + remainder_z, r_total + remainder_r, c_total + remainder_c
             remainders = [0, 0, 0]
             if self.min_images is not None:
-                remainders[0] = max([0, self.min_images-min_images])
+                remainders[0] = max([0, self.min_images - min_images])
                 min_images = max([min_images, self.min_images])
             if self.min_rows is not None:
                 remainders[1] = max([0, self.min_rows - min_rows])
@@ -826,14 +826,14 @@ class Box_Images(Image_Processor):
             image_cube = image[z_start:z_stop, r_start:r_stop, c_start:c_stop]
             annotation_cube = annotation[z_start:z_stop, r_start:r_stop, c_start:c_stop]
             img_shape = image_cube.shape
-            pads = [min_images-img_shape[0], min_rows-img_shape[1], min_cols-img_shape[2]]
-            pads = [[max([0,floor(i/2)]), max([0,ceil(i/2)])] for i in pads]
+            pads = [min_images - img_shape[0], min_rows - img_shape[1], min_cols - img_shape[2]]
+            pads = [[max([0, floor(i / 2)]), max([0, ceil(i / 2)])] for i in pads]
             image_cube = np.pad(image_cube, pads, constant_values=np.min(image_cube))
             if len(annotation.shape) > 3:
                 pads += [[0, 0]]
             annotation_cube = np.pad(annotation_cube, pads)
             if len(annotation.shape) > 3:
-                annotation_cube[...,0] = 1-np.sum(annotation_cube[...,1:],axis=-1)
+                annotation_cube[..., 0] = 1 - np.sum(annotation_cube[..., 1:], axis=-1)
             input_features['annotation'] = annotation_cube
             input_features['image'] = image_cube
         return input_features
@@ -845,7 +845,7 @@ class Add_Bounding_Box_Indexes(Image_Processor):
         :param wanted_vals_for_bbox: a list of values in integer form for bboxes
         '''
         assert type(wanted_vals_for_bbox) is list, 'Provide a list for bboxes'
-        self.wanted_vals_for_bbox=wanted_vals_for_bbox
+        self.wanted_vals_for_bbox = wanted_vals_for_bbox
         self.add_to_dictionary = add_to_dictionary
         self.label_name = label_name
 
@@ -864,11 +864,13 @@ class Add_Bounding_Box_Indexes(Image_Processor):
                 input_features['voxel_volumes_{}'.format(val)] = voxel_volumes
                 input_features['bounding_boxes_{}'.format(val)] = bounding_boxes
                 input_features = add_bounding_box_to_dict(input_features=input_features, bounding_box=bounding_boxes[0],
-                                                          val=val, return_indexes=False, add_to_dictionary=self.add_to_dictionary)
+                                                          val=val, return_indexes=False,
+                                                          add_to_dictionary=self.add_to_dictionary)
         return input_features
 
 
-def add_bounding_box_to_dict(bounding_box, input_features=None, val=None, return_indexes=False, add_to_dictionary=False):
+def add_bounding_box_to_dict(bounding_box, input_features=None, val=None, return_indexes=False,
+                             add_to_dictionary=False):
     c_start, r_start, z_start, c_stop, r_stop, z_stop = bounding_box
     z_stop, r_stop, c_stop = z_start + z_stop, r_start + r_stop, c_start + c_stop
     if return_indexes:
