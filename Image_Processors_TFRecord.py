@@ -678,20 +678,24 @@ class NormalizeParotidMR(Image_Processor):
 
 
 class Threshold_Images(Image_Processor):
-    def __init__(self, lower_bound=-np.inf, upper_bound=np.inf):
-        '''
+    def __init__(self, image_key='image', lower_bound=-np.inf, upper_bound=np.inf):
+        """
+        :param image_key: key for images in the image_features dictionary
         :param lower_bound: Lower bound to threshold images, normally -3.55 if Normalize_Images is used previously
         :param upper_bound: Upper bound to threshold images, normally 3.55 if Normalize_Images is used previously
-        '''
+        """
         self.lower = lower_bound
         self.upper = upper_bound
+        self.image_key = image_key
 
     def parse(self, image_features, *args, **kwargs):
-        image = image_features['image']
+        assert self.image_key in image_features.keys(), 'Make sure the key you are referring to is present in the ' \
+                                                        'features,  {} was not found'.format(self.image_key)
+        image = image_features[self.image_key]
         image[image < self.lower] = self.lower
         image[image > self.upper] = self.upper
         image = image / (self.upper - self.lower)
-        image_features['image'] = image
+        image_features[self.image_key] = image
         return image_features
 
 
