@@ -12,7 +12,7 @@ from math import ceil, floor
 from .Plot_And_Scroll_Images.Plot_Scroll_Images import plot_scroll_Image, plt
 
 
-class Image_Processor(object):
+class ImageProcessor(object):
     def parse(self, input_features):
         return input_features
 
@@ -99,7 +99,7 @@ def serialize_example(input_features_dictionary, image_processors=None, record_w
                  verbose=verbose)
 
 
-class Record_Writer(Image_Processor):
+class RecordWriter(ImageProcessor):
     def __init__(self, out_path=None, out_file=None):
         assert out_path is not None, "You need to pass a base file path..."
         self.out_path = out_path
@@ -107,7 +107,7 @@ class Record_Writer(Image_Processor):
         if not os.path.exists(out_path):
             os.makedirs(out_path)
 
-    def parse(self, input_features):
+    def write_records(self, input_features):
         keys = list(input_features.keys())
         filename = self.out_file
         if self.out_file is None:
@@ -140,7 +140,7 @@ def get_features(features, image_processors=None, record_writer=None, verbose=0)
             for key in features.keys():
                 features[key] = image_processor.parse(features[key])
         features, _ = down_dictionary(features, OrderedDict(), 0)
-    record_writer.parse(features)
+    record_writer.write_records(features)
 
 
 def down_dictionary(input_dictionary, out_dictionary=OrderedDict(), out_index=0):
@@ -239,7 +239,7 @@ class Remove_Lowest_Probabilty_Structure(object):
         return image_slice
 
 
-class Gaussian_Uncertainty(Image_Processor):
+class Gaussian_Uncertainty(ImageProcessor):
     def __init__(self, sigma=None):
         '''
         :param sigma: Desired sigma, in mm, in x, y, z direction
@@ -289,7 +289,7 @@ class Gaussian_Uncertainty(Image_Processor):
         return input_features
 
 
-class Combine_Annotations(Image_Processor):
+class Combine_Annotations(ImageProcessor):
     def __init__(self, annotation_input=[5, 6, 7, 8], to_annotation=5):
         self.annotation_input = annotation_input
         self.to_annotation = to_annotation
@@ -308,7 +308,7 @@ class Combine_Annotations(Image_Processor):
         return input_features
 
 
-class To_Categorical(Image_Processor):
+class To_Categorical(ImageProcessor):
     def __init__(self, num_classes=None, annotation_key='annotation'):
         self.num_classes = num_classes
         self.annotation_key = annotation_key
@@ -320,7 +320,7 @@ class To_Categorical(Image_Processor):
         return input_features
 
 
-class Resample_LiTs(Image_Processor):
+class Resample_LiTs(ImageProcessor):
     def __init__(self, desired_output_spacing=(None, None, None)):
         self.desired_output_spacing = desired_output_spacing
 
@@ -350,7 +350,7 @@ class Resample_LiTs(Image_Processor):
         return input_features
 
 
-class Resampler(Image_Processor):
+class Resampler(ImageProcessor):
     def __init__(self, resample_keys=('image', 'annotation'), resample_interpolators=('Linear', 'Nearest'),
                  desired_output_spacing=(None, None, None), make_512=False):
         """
@@ -422,7 +422,7 @@ class Resampler(Image_Processor):
         return input_features
 
 
-class Cast_Data(Image_Processor):
+class Cast_Data(ImageProcessor):
     def __init__(self, key_type_dict=None):
         '''
         :param key_type_dict: A dictionary of keys and datatypes wanted {'image':'float32'}
@@ -438,7 +438,7 @@ class Cast_Data(Image_Processor):
         return image_features
 
 
-class Add_Images_And_Annotations(Image_Processor):
+class Add_Images_And_Annotations(ImageProcessor):
     def __init__(self, nifti_path_keys=('image_path', 'annotation_path'), out_keys=('image', 'annotation'),
                  dtypes=('float32', 'int8')):
         self.nifti_path_keys, self.out_keys, self.dtypes = nifti_path_keys, out_keys, dtypes
@@ -453,7 +453,7 @@ class Add_Images_And_Annotations(Image_Processor):
         return input_features
 
 
-class Add_Dose(Image_Processor):
+class Add_Dose(ImageProcessor):
     def parse(self, input_features):
         image_path = input_features['image_path']
         dose_path = image_path.replace('Data', 'Dose')
@@ -470,7 +470,7 @@ class Add_Dose(Image_Processor):
         return input_features
 
 
-class Clip_Images_By_Extension(Image_Processor):
+class Clip_Images_By_Extension(ImageProcessor):
     def __init__(self, extension=np.inf):
         self.extension = extension
 
@@ -485,7 +485,7 @@ class Clip_Images_By_Extension(Image_Processor):
         return input_features
 
 
-class Normalize_MRI(Image_Processor):
+class Normalize_MRI(ImageProcessor):
     def parse(self, input_features):
         image_handle = sitk.GetImageFromArray(input_features['image'])
         image = input_features['image']
@@ -506,7 +506,7 @@ class Normalize_MRI(Image_Processor):
         return input_features
 
 
-class N4BiasCorrection(Image_Processor):
+class N4BiasCorrection(ImageProcessor):
     def parse(self, input_features):
         image_handle = sitk.GetImageFromArray(input_features['image'])
         corrector = sitk.N4BiasFieldCorrectionImageFilter()
@@ -519,7 +519,7 @@ class N4BiasCorrection(Image_Processor):
         return input_features
 
 
-class Split_Disease_Into_Cubes(Image_Processor):
+class Split_Disease_Into_Cubes(ImageProcessor):
     def __init__(self, disease_annotation=None, cube_size=(16, 120, 120), min_voxel_volume=0, max_voxels=np.inf):
         '''
         :param disease_annotation: integer for disease annotation
@@ -590,7 +590,7 @@ class Split_Disease_Into_Cubes(Image_Processor):
         return input_features
 
 
-class Distribute_into_3D(Image_Processor):
+class Distribute_into_3D(ImageProcessor):
     def __init__(self, min_z=0, max_z=np.inf, max_rows=np.inf, max_cols=np.inf, mirror_small_bits=True,
                  chop_ends=False, desired_val=1):
         self.max_z = max_z
@@ -649,7 +649,7 @@ class Distribute_into_3D(Image_Processor):
         return input_features
 
 
-class Distribute_into_2D(Image_Processor):
+class Distribute_into_2D(ImageProcessor):
 
     def parse(self, input_features):
         out_features = OrderedDict()
@@ -674,7 +674,7 @@ class Distribute_into_2D(Image_Processor):
         return input_features
 
 
-class NormalizeParotidMR(Image_Processor):
+class NormalizeParotidMR(ImageProcessor):
     def parse(self, input_features):
         images = input_features['image']
         data = images.flatten()
@@ -702,7 +702,7 @@ def _check_keys_(input_features, keys):
                                               '{} was not found'.format(keys)
 
 
-class AddByValues(Image_Processor):
+class AddByValues(ImageProcessor):
     def __init__(self, image_keys=('image',), values=(1.,)):
         """
         :param image_keys: tuple of keys to divide by the value
@@ -720,7 +720,7 @@ class AddByValues(Image_Processor):
         return input_features
 
 
-class DistributeIntoRecurrenceCubes(Image_Processor):
+class DistributeIntoRecurrenceCubes(ImageProcessor):
     def __init__(self, rows=128, cols=128, images=32):
         self.rows, self.cols, self.images = rows, cols, images
     """
@@ -777,7 +777,7 @@ class DistributeIntoRecurrenceCubes(Image_Processor):
         return out_features
 
 
-class DivideByValues(Image_Processor):
+class DivideByValues(ImageProcessor):
     def __init__(self, image_keys=('image',), values=(1.,)):
         """
         :param image_keys: tuple of keys to divide by the value
@@ -795,7 +795,7 @@ class DivideByValues(Image_Processor):
         return input_features
 
 
-class Threshold_Images(Image_Processor):
+class Threshold_Images(ImageProcessor):
     def __init__(self, image_key='image', lower_bound=-np.inf, upper_bound=np.inf, divide=True):
         """
         :param image_key: key for images in the image_features dictionary
@@ -818,7 +818,7 @@ class Threshold_Images(Image_Processor):
         return image_features
 
 
-class Normalize_to_annotation(Image_Processor):
+class Normalize_to_annotation(ImageProcessor):
     def __init__(self, image_key='image', annotation_key='annotation', annotation_value_list=None, mirror_max=False,
                  lower_percentile=None, upper_percentile=None):
         """
@@ -894,7 +894,7 @@ def expand_box_indexes(z_start, z_stop, r_start, r_stop, c_start, c_stop, annota
     return z_start, z_stop, r_start, r_stop, c_start, c_stop
 
 
-class Box_Images(Image_Processor):
+class Box_Images(ImageProcessor):
     def __init__(self, image_key='image', annotation_key='annotation', wanted_vals_for_bbox=None,
                  bounding_box_expansion=(5, 10, 10), power_val_z=1, power_val_r=1,
                  power_val_c=1, min_images=None, min_rows=None, min_cols=None):
@@ -989,7 +989,7 @@ class Box_Images(Image_Processor):
         return input_features
 
 
-class Add_Bounding_Box_Indexes(Image_Processor):
+class Add_Bounding_Box_Indexes(ImageProcessor):
     def __init__(self, wanted_vals_for_bbox=None, add_to_dictionary=False, label_name='annotation'):
         '''
         :param wanted_vals_for_bbox: a list of values in integer form for bboxes
