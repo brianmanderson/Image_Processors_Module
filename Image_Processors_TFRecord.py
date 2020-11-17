@@ -99,15 +99,44 @@ def serialize_example(input_features_dictionary, image_processors=None, record_w
                  verbose=verbose)
 
 
+def write_record(filename, input_features):
+    features = {}
+    d_type = {}
+    writer = tf.io.TFRecordWriter(filename)
+    examples = 0
+    for key in input_features.keys():
+        example_proto = return_example_proto(input_features[key], features, d_type)
+        writer.write(example_proto.SerializeToString())
+        examples += 1
+    writer.close()
+    fid = open(filename.replace('.tfrecord', '_Num_Examples.txt'), 'w+')
+    fid.write(str(examples))
+    fid.close()
+    save_obj(filename.replace('.tfrecord', '_features.pkl'), features)
+    save_obj(filename.replace('.tfrecord', '_dtype.pkl'), d_type)
+    del input_features
+    return {}
+
+
 class RecordWriter(ImageProcessor):
-    def __init__(self, out_path=None, out_file=None):
+    def __init__(self, out_path, naming_key='image_path', **kwargs):
         assert out_path is not None, "You need to pass a base file path..."
         self.out_path = out_path
-        self.out_file = out_file
+        self.naming_key = naming_key
         if not os.path.exists(out_path):
             os.makedirs(out_path)
 
+    def parse(self, input_features):
+        keys = list(input_features.keys())
+        _check_keys_(input_features, self.naming_key)
+        image_name = os.path.split(input_features[self.naming_key])[-1].split('.')[0]
+        filename = os.path.join(self.out_path, '{}.tfrecord'.format(image_name))
+        write_record(filename=filename, input_features=input_features)
+
+
+class RecordWriterRecurrence(RecordWriter):
     def write_records(self, input_features):
+        xxx = 1
         keys = list(input_features.keys())
         filename = self.out_file
         if self.out_file is None:
