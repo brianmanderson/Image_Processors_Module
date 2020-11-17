@@ -137,28 +137,29 @@ class RecordWriter(object):
 
 class RecordWriterRecurrence(RecordWriter):
     def write_records(self, input_features):
-        xxx = 1
-        keys = list(input_features.keys())
-        filename = self.out_file
-        if self.out_file is None:
-            image_name = os.path.split(input_features[keys[0]]['image_path'])[-1].split('.nii')[0]
-            filename = os.path.join(self.out_path, '{}.tfrecord'.format(image_name))
-        features = {}
-        d_type = {}
-        writer = tf.io.TFRecordWriter(filename)
-        examples = 0
-        for key in input_features.keys():
-            example_proto = return_example_proto(input_features[key], features, d_type)
-            writer.write(example_proto.SerializeToString())
-            examples += 1
-        writer.close()
-        fid = open(filename.replace('.tfrecord', '_Num_Examples.txt'), 'w+')
-        fid.write(str(examples))
-        fid.close()
-        save_obj(filename.replace('.tfrecord', '_features.pkl'), features)
-        save_obj(filename.replace('.tfrecord', '_dtype.pkl'), d_type)
-        del input_features
-        return {}
+        non_recurred = -1
+        recurred = -1
+        for example_key in input_features.keys():
+            example = input_features[example_key]
+            _check_keys_(example, self.file_name_key)
+            image_name = example[self.file_name_key]
+            annotation = np.argmax(example['annotation'])
+            if annotation == 0:
+                non_recurred += 1
+                out_path = os.path.join(self.out_path, 'No_Recurrence')
+                if not os.path.exists(out_path):
+                    os.makedirs(out_path)
+                filename = os.path.join(out_path,
+                                        image_name.replace('.tfrecord',
+                                                           '_NoRecurrence_{}.tfrecord'.format(non_recurred)))
+            else:
+                recurred += 1
+                out_path = os.path.join(self.out_path, 'Recurrence')
+                if not os.path.exists(out_path):
+                    os.makedirs(out_path)
+                filename = os.path.join(out_path,
+                                        image_name.replace('.tfrecord', '_Recurrence_{}.tfrecord'.format(recurred)))
+            write_record(filename=filename, input_features={'out_example': example})
 
 
 def get_features(features, image_processors=None, verbose=0, record_writer=None):
