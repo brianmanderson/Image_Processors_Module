@@ -94,9 +94,9 @@ def return_example_proto(base_dictionary, image_dictionary_for_pickle={}, data_t
     return example_proto
 
 
-def serialize_example(input_features_dictionary, image_processors=None, record_writer=None, verbose=False):
-    get_features(input_features_dictionary, image_processors=image_processors, record_writer=record_writer,
-                 verbose=verbose)
+def serialize_example(input_features_dictionary, image_processors=None, verbose=False, record_writer=None):
+    get_features(input_features_dictionary, image_processors=image_processors, verbose=verbose,
+                 record_writer=record_writer)
 
 
 def write_record(filename, input_features):
@@ -118,20 +118,21 @@ def write_record(filename, input_features):
     return {}
 
 
-class RecordWriter(ImageProcessor):
-    def __init__(self, out_path, naming_key='image_path', **kwargs):
-        assert out_path is not None, "You need to pass a base file path..."
+class RecordWriter(object):
+    def __init__(self, out_path, file_name_key='file_name', **kwargs):
+        self.file_name_key = file_name_key
         self.out_path = out_path
-        self.naming_key = naming_key
         if not os.path.exists(out_path):
             os.makedirs(out_path)
 
-    def parse(self, input_features):
-        keys = list(input_features.keys())
-        _check_keys_(input_features, self.naming_key)
-        image_name = os.path.split(input_features[self.naming_key])[-1].split('.')[0]
-        filename = os.path.join(self.out_path, '{}.tfrecord'.format(image_name))
-        write_record(filename=filename, input_features=input_features)
+    def write_records(self, input_features):
+        for example_key in input_features.keys():
+            example = input_features[example_key]
+            _check_keys_(example, self.file_name_key)
+            image_name = example[self.file_name_key]
+            filename = os.path.join(self.out_path, image_name)
+            write_record(filename=filename, input_features=input_features)
+            break
 
 
 class RecordWriterRecurrence(RecordWriter):
@@ -160,7 +161,7 @@ class RecordWriterRecurrence(RecordWriter):
         return {}
 
 
-def get_features(features, image_processors=None, record_writer=None, verbose=0):
+def get_features(features, image_processors=None, verbose=0, record_writer=None):
     if image_processors is not None:
         for image_processor in image_processors:
             features, _ = down_dictionary(features, OrderedDict(), 0)
@@ -169,17 +170,19 @@ def get_features(features, image_processors=None, record_writer=None, verbose=0)
             for key in features.keys():
                 features[key] = image_processor.parse(features[key])
         features, _ = down_dictionary(features, OrderedDict(), 0)
-    record_writer.write_records(features)
+    if record_writer is not None:
+        record_writer.write_records(features)
 
 
 def down_dictionary(input_dictionary, out_dictionary=OrderedDict(), out_index=0):
-    if 'out_path' in input_dictionary.keys():
-        out_dictionary['Example_{}'.format(out_index)] = input_dictionary
-        out_index += 1
-        return out_dictionary, out_index
-    else:
-        for key in input_dictionary.keys():
+    for key in input_dictionary.keys():
+        data = input_dictionary[key]
+        if type(data) is dict or type(data) is OrderedDict:
             out_dictionary, out_index = down_dictionary(input_dictionary[key], out_dictionary, out_index)
+        else:
+            out_dictionary['Example_{}'.format(out_index)] = input_dictionary
+            out_index += 1
+            return out_dictionary, out_index
     return out_dictionary, out_index
 
 
@@ -798,7 +801,7 @@ class DistributeIntoRecurrenceCubes(ImageProcessor):
                 out_cube = np.pad(out_cube, pads, constant_values=np.min(out_cube))
                 temp_feature['image'] = out_cube
                 temp_feature['annotation'] = to_categorical(value, 2)
-                wanted_keys = ('primary_image_path', 'out_path', 'out_file', 'spacing')
+                wanted_keys = ('primary_image_path', 'file_name', 'spacing')
                 for key in wanted_keys:  # Bring along anything else we care about
                     if key not in temp_feature.keys():
                         temp_feature[key] = input_features[key]
