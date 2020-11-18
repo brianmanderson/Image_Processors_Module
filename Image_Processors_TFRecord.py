@@ -12,7 +12,7 @@ from math import ceil, floor
 from .Plot_And_Scroll_Images.Plot_Scroll_Images import plot_scroll_Image, plt
 
 
-class Image_Processor(object):
+class ImageProcessor(object):
     def parse(self, input_features):
         return input_features
 
@@ -94,44 +94,80 @@ def return_example_proto(base_dictionary, image_dictionary_for_pickle={}, data_t
     return example_proto
 
 
-def serialize_example(input_features_dictionary, image_processors=None, record_writer=None, verbose=False):
-    get_features(input_features_dictionary, image_processors=image_processors, record_writer=record_writer,
-                 verbose=verbose)
+def serialize_example(input_features_dictionary, image_processors=None, verbose=False, record_writer=None):
+    get_features(input_features_dictionary, image_processors=image_processors, verbose=verbose,
+                 record_writer=record_writer)
 
 
-class Record_Writer(Image_Processor):
-    def __init__(self, out_path=None, out_file=None):
-        assert out_path is not None, "You need to pass a base file path..."
+def write_record(filename, input_features):
+    features = {}
+    d_type = {}
+    writer = tf.io.TFRecordWriter(filename)
+    examples = 0
+    for key in input_features.keys():
+        example_proto = return_example_proto(input_features[key], features, d_type)
+        writer.write(example_proto.SerializeToString())
+        examples += 1
+    writer.close()
+    fid = open(filename.replace('.tfrecord', '_Num_Examples.txt'), 'w+')
+    fid.write(str(examples))
+    fid.close()
+    save_obj(filename.replace('.tfrecord', '_features.pkl'), features)
+    save_obj(filename.replace('.tfrecord', '_dtype.pkl'), d_type)
+    del input_features
+    return {}
+
+
+class RecordWriter(object):
+    def __init__(self, out_path, file_name_key='file_name', rewrite=False, **kwargs):
+        self.file_name_key = file_name_key
         self.out_path = out_path
-        self.out_file = out_file
+        self.rewrite = rewrite
         if not os.path.exists(out_path):
             os.makedirs(out_path)
 
-    def parse(self, input_features):
-        keys = list(input_features.keys())
-        filename = self.out_file
-        if self.out_file is None:
-            image_name = os.path.split(input_features[keys[0]]['image_path'])[-1].split('.nii')[0]
-            filename = os.path.join(self.out_path, '{}.tfrecord'.format(image_name))
-        features = {}
-        d_type = {}
-        writer = tf.io.TFRecordWriter(filename)
-        examples = 0
-        for key in input_features.keys():
-            example_proto = return_example_proto(input_features[key], features, d_type)
-            writer.write(example_proto.SerializeToString())
-            examples += 1
-        writer.close()
-        fid = open(filename.replace('.tfrecord', '_Num_Examples.txt'), 'w+')
-        fid.write(str(examples))
-        fid.close()
-        save_obj(filename.replace('.tfrecord', '_features.pkl'), features)
-        save_obj(filename.replace('.tfrecord', '_dtype.pkl'), d_type)
-        del input_features
-        return {}
+    def write_records(self, input_features):
+        for example_key in input_features.keys():
+            example = input_features[example_key]
+            _check_keys_(example, self.file_name_key)
+            image_name = example[self.file_name_key]
+            filename = os.path.join(self.out_path, image_name)
+            if not filename.endswith('.tfrecord'):
+                filename += '.tfrecord'
+            if not os.path.exists(filename) or self.rewrite:
+                write_record(filename=filename, input_features=input_features)
+            break
 
 
-def get_features(features, image_processors=None, record_writer=None, verbose=0):
+class RecordWriterRecurrence(RecordWriter):
+    def write_records(self, input_features):
+        non_recurred = -1
+        recurred = -1
+        for example_key in input_features.keys():
+            example = input_features[example_key]
+            _check_keys_(example, self.file_name_key)
+            image_name = example[self.file_name_key]
+            annotation = np.argmax(example['annotation'])
+            if annotation == 0:
+                non_recurred += 1
+                out_path = os.path.join(self.out_path, 'No_Recurrence')
+                if not os.path.exists(out_path):
+                    os.makedirs(out_path)
+                filename = os.path.join(out_path,
+                                        image_name.replace('.tfrecord',
+                                                           '_NoRecurrence_{}.tfrecord'.format(non_recurred)))
+            else:
+                recurred += 1
+                out_path = os.path.join(self.out_path, 'Recurrence')
+                if not os.path.exists(out_path):
+                    os.makedirs(out_path)
+                filename = os.path.join(out_path,
+                                        image_name.replace('.tfrecord', '_Recurrence_{}.tfrecord'.format(recurred)))
+            if not os.path.exists(filename) or self.rewrite:
+                write_record(filename=filename, input_features={'out_example': example})
+
+
+def get_features(features, image_processors=None, verbose=0, record_writer=None):
     if image_processors is not None:
         for image_processor in image_processors:
             features, _ = down_dictionary(features, OrderedDict(), 0)
@@ -140,17 +176,19 @@ def get_features(features, image_processors=None, record_writer=None, verbose=0)
             for key in features.keys():
                 features[key] = image_processor.parse(features[key])
         features, _ = down_dictionary(features, OrderedDict(), 0)
-    record_writer.parse(features)
+    if record_writer is not None:
+        record_writer.write_records(features)
 
 
 def down_dictionary(input_dictionary, out_dictionary=OrderedDict(), out_index=0):
-    if 'out_path' in input_dictionary.keys():
-        out_dictionary['Example_{}'.format(out_index)] = input_dictionary
-        out_index += 1
-        return out_dictionary, out_index
-    else:
-        for key in input_dictionary.keys():
+    for key in input_dictionary.keys():
+        data = input_dictionary[key]
+        if type(data) is dict or type(data) is OrderedDict:
             out_dictionary, out_index = down_dictionary(input_dictionary[key], out_dictionary, out_index)
+        else:
+            out_dictionary['Example_{}'.format(out_index)] = input_dictionary
+            out_index += 1
+            return out_dictionary, out_index
     return out_dictionary, out_index
 
 
@@ -239,7 +277,7 @@ class Remove_Lowest_Probabilty_Structure(object):
         return image_slice
 
 
-class Gaussian_Uncertainty(Image_Processor):
+class Gaussian_Uncertainty(ImageProcessor):
     def __init__(self, sigma=None):
         '''
         :param sigma: Desired sigma, in mm, in x, y, z direction
@@ -289,7 +327,7 @@ class Gaussian_Uncertainty(Image_Processor):
         return input_features
 
 
-class Combine_Annotations(Image_Processor):
+class Combine_Annotations(ImageProcessor):
     def __init__(self, annotation_input=[5, 6, 7, 8], to_annotation=5):
         self.annotation_input = annotation_input
         self.to_annotation = to_annotation
@@ -308,7 +346,7 @@ class Combine_Annotations(Image_Processor):
         return input_features
 
 
-class To_Categorical(Image_Processor):
+class To_Categorical(ImageProcessor):
     def __init__(self, num_classes=None, annotation_key='annotation'):
         self.num_classes = num_classes
         self.annotation_key = annotation_key
@@ -320,7 +358,7 @@ class To_Categorical(Image_Processor):
         return input_features
 
 
-class Resample_LiTs(Image_Processor):
+class Resample_LiTs(ImageProcessor):
     def __init__(self, desired_output_spacing=(None, None, None)):
         self.desired_output_spacing = desired_output_spacing
 
@@ -350,7 +388,7 @@ class Resample_LiTs(Image_Processor):
         return input_features
 
 
-class Resampler(Image_Processor):
+class Resampler(ImageProcessor):
     def __init__(self, resample_keys=('image', 'annotation'), resample_interpolators=('Linear', 'Nearest'),
                  desired_output_spacing=(None, None, None), make_512=False):
         """
@@ -422,7 +460,7 @@ class Resampler(Image_Processor):
         return input_features
 
 
-class Cast_Data(Image_Processor):
+class Cast_Data(ImageProcessor):
     def __init__(self, key_type_dict=None):
         '''
         :param key_type_dict: A dictionary of keys and datatypes wanted {'image':'float32'}
@@ -438,7 +476,7 @@ class Cast_Data(Image_Processor):
         return image_features
 
 
-class Add_Images_And_Annotations(Image_Processor):
+class Add_Images_And_Annotations(ImageProcessor):
     def __init__(self, nifti_path_keys=('image_path', 'annotation_path'), out_keys=('image', 'annotation'),
                  dtypes=('float32', 'int8')):
         self.nifti_path_keys, self.out_keys, self.dtypes = nifti_path_keys, out_keys, dtypes
@@ -453,7 +491,7 @@ class Add_Images_And_Annotations(Image_Processor):
         return input_features
 
 
-class Add_Dose(Image_Processor):
+class Add_Dose(ImageProcessor):
     def parse(self, input_features):
         image_path = input_features['image_path']
         dose_path = image_path.replace('Data', 'Dose')
@@ -470,7 +508,7 @@ class Add_Dose(Image_Processor):
         return input_features
 
 
-class Clip_Images_By_Extension(Image_Processor):
+class Clip_Images_By_Extension(ImageProcessor):
     def __init__(self, extension=np.inf):
         self.extension = extension
 
@@ -485,7 +523,7 @@ class Clip_Images_By_Extension(Image_Processor):
         return input_features
 
 
-class Normalize_MRI(Image_Processor):
+class Normalize_MRI(ImageProcessor):
     def parse(self, input_features):
         image_handle = sitk.GetImageFromArray(input_features['image'])
         image = input_features['image']
@@ -506,7 +544,7 @@ class Normalize_MRI(Image_Processor):
         return input_features
 
 
-class N4BiasCorrection(Image_Processor):
+class N4BiasCorrection(ImageProcessor):
     def parse(self, input_features):
         image_handle = sitk.GetImageFromArray(input_features['image'])
         corrector = sitk.N4BiasFieldCorrectionImageFilter()
@@ -519,7 +557,7 @@ class N4BiasCorrection(Image_Processor):
         return input_features
 
 
-class Split_Disease_Into_Cubes(Image_Processor):
+class Split_Disease_Into_Cubes(ImageProcessor):
     def __init__(self, disease_annotation=None, cube_size=(16, 120, 120), min_voxel_volume=0, max_voxels=np.inf):
         '''
         :param disease_annotation: integer for disease annotation
@@ -590,7 +628,7 @@ class Split_Disease_Into_Cubes(Image_Processor):
         return input_features
 
 
-class Distribute_into_3D(Image_Processor):
+class Distribute_into_3D(ImageProcessor):
     def __init__(self, min_z=0, max_z=np.inf, max_rows=np.inf, max_cols=np.inf, mirror_small_bits=True,
                  chop_ends=False, desired_val=1):
         self.max_z = max_z
@@ -649,7 +687,7 @@ class Distribute_into_3D(Image_Processor):
         return input_features
 
 
-class Distribute_into_2D(Image_Processor):
+class Distribute_into_2D(ImageProcessor):
 
     def parse(self, input_features):
         out_features = OrderedDict()
@@ -674,7 +712,7 @@ class Distribute_into_2D(Image_Processor):
         return input_features
 
 
-class NormalizeParotidMR(Image_Processor):
+class NormalizeParotidMR(ImageProcessor):
     def parse(self, input_features):
         images = input_features['image']
         data = images.flatten()
@@ -702,7 +740,7 @@ def _check_keys_(input_features, keys):
                                               '{} was not found'.format(keys)
 
 
-class AddByValues(Image_Processor):
+class AddByValues(ImageProcessor):
     def __init__(self, image_keys=('image',), values=(1.,)):
         """
         :param image_keys: tuple of keys to divide by the value
@@ -720,7 +758,7 @@ class AddByValues(Image_Processor):
         return input_features
 
 
-class DistributeIntoRecurrenceCubes(Image_Processor):
+class DistributeIntoRecurrenceCubes(ImageProcessor):
     def __init__(self, rows=128, cols=128, images=32):
         self.rows, self.cols, self.images = rows, cols, images
     """
@@ -769,7 +807,7 @@ class DistributeIntoRecurrenceCubes(Image_Processor):
                 out_cube = np.pad(out_cube, pads, constant_values=np.min(out_cube))
                 temp_feature['image'] = out_cube
                 temp_feature['annotation'] = to_categorical(value, 2)
-                wanted_keys = ('primary_image_path', 'out_path', 'out_file', 'spacing')
+                wanted_keys = ('primary_image_path', 'file_name', 'spacing')
                 for key in wanted_keys:  # Bring along anything else we care about
                     if key not in temp_feature.keys():
                         temp_feature[key] = input_features[key]
@@ -777,7 +815,7 @@ class DistributeIntoRecurrenceCubes(Image_Processor):
         return out_features
 
 
-class DivideByValues(Image_Processor):
+class DivideByValues(ImageProcessor):
     def __init__(self, image_keys=('image',), values=(1.,)):
         """
         :param image_keys: tuple of keys to divide by the value
@@ -795,7 +833,7 @@ class DivideByValues(Image_Processor):
         return input_features
 
 
-class Threshold_Images(Image_Processor):
+class Threshold_Images(ImageProcessor):
     def __init__(self, image_key='image', lower_bound=-np.inf, upper_bound=np.inf, divide=True):
         """
         :param image_key: key for images in the image_features dictionary
@@ -818,7 +856,7 @@ class Threshold_Images(Image_Processor):
         return image_features
 
 
-class Normalize_to_annotation(Image_Processor):
+class Normalize_to_annotation(ImageProcessor):
     def __init__(self, image_key='image', annotation_key='annotation', annotation_value_list=None, mirror_max=False,
                  lower_percentile=None, upper_percentile=None):
         """
@@ -859,12 +897,14 @@ class Normalize_to_annotation(Image_Processor):
             input_features[self.image_key] = images
             return input_features
         counts, bins = np.histogram(data, bins=100)
-        bins = bins[:-1]
+        bins = bins[1:-2]
+        counts = counts[1:-1]
         count_index = np.where(counts == np.max(counts))[0][-1]
         peak = bins[count_index]
         data_reduced = data[np.where((data > peak - 150) & (data < peak + 150))]
         counts, bins = np.histogram(data_reduced, bins=1000)
-        bins = bins[:-1]
+        bins = bins[1:-2]
+        counts = counts[1:-1]
         count_index = np.where(counts == np.max(counts))[0][-1]
         half_counts = counts - np.max(counts) // 2
         half_upper = np.abs(half_counts[count_index + 1:])
@@ -894,7 +934,7 @@ def expand_box_indexes(z_start, z_stop, r_start, r_stop, c_start, c_stop, annota
     return z_start, z_stop, r_start, r_stop, c_start, c_stop
 
 
-class Box_Images(Image_Processor):
+class Box_Images(ImageProcessor):
     def __init__(self, image_key='image', annotation_key='annotation', wanted_vals_for_bbox=None,
                  bounding_box_expansion=(5, 10, 10), power_val_z=1, power_val_r=1,
                  power_val_c=1, min_images=None, min_rows=None, min_cols=None):
@@ -989,7 +1029,7 @@ class Box_Images(Image_Processor):
         return input_features
 
 
-class Add_Bounding_Box_Indexes(Image_Processor):
+class Add_Bounding_Box_Indexes(ImageProcessor):
     def __init__(self, wanted_vals_for_bbox=None, add_to_dictionary=False, label_name='annotation'):
         '''
         :param wanted_vals_for_bbox: a list of values in integer form for bboxes
