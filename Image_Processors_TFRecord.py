@@ -897,7 +897,8 @@ class Normalize_to_annotation(ImageProcessor):
             input_features[self.image_key] = images
             return input_features
         counts, bins = np.histogram(data, bins=100)
-        bins = bins[:-1]
+        bins = bins[1:-2]
+        counts = counts[1:-1]
         count_index = np.where(counts == np.max(counts))[0][-1]
         peak = bins[count_index]
         data_reduced = data[np.where((data > peak - 150) & (data < peak + 150))]
