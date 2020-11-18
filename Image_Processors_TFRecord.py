@@ -119,9 +119,10 @@ def write_record(filename, input_features):
 
 
 class RecordWriter(object):
-    def __init__(self, out_path, file_name_key='file_name', **kwargs):
+    def __init__(self, out_path, file_name_key='file_name', rewrite=False, **kwargs):
         self.file_name_key = file_name_key
         self.out_path = out_path
+        self.rewrite = rewrite
         if not os.path.exists(out_path):
             os.makedirs(out_path)
 
@@ -131,7 +132,8 @@ class RecordWriter(object):
             _check_keys_(example, self.file_name_key)
             image_name = example[self.file_name_key]
             filename = os.path.join(self.out_path, image_name)
-            write_record(filename=filename, input_features=input_features)
+            if not os.path.exists(filename) or self.rewrite:
+                write_record(filename=filename, input_features=input_features)
             break
 
 
@@ -159,7 +161,8 @@ class RecordWriterRecurrence(RecordWriter):
                     os.makedirs(out_path)
                 filename = os.path.join(out_path,
                                         image_name.replace('.tfrecord', '_Recurrence_{}.tfrecord'.format(recurred)))
-            write_record(filename=filename, input_features={'out_example': example})
+            if not os.path.exists(filename) or self.rewrite:
+                write_record(filename=filename, input_features={'out_example': example})
 
 
 def get_features(features, image_processors=None, verbose=0, record_writer=None):
