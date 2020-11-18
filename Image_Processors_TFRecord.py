@@ -132,6 +132,8 @@ class RecordWriter(object):
             _check_keys_(example, self.file_name_key)
             image_name = example[self.file_name_key]
             filename = os.path.join(self.out_path, image_name)
+            if not filename.endswith('.tfrecord'):
+                filename += '.tfrecord'
             if not os.path.exists(filename) or self.rewrite:
                 write_record(filename=filename, input_features=input_features)
             break
