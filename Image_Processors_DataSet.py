@@ -513,7 +513,7 @@ def _random_flip(image, flip_index, seed, scope_name, flip_3D_together=False):
 
 
 class Flip_Images(Image_Processor):
-    def __init__(self, keys=['image', 'annotation'], flip_lr=True, flip_up_down=True, flip_z=False,
+    def __init__(self, keys=('image', 'annotation'), flip_lr=True, flip_up_down=True, flip_z=False,
                  flip_3D_together=False):
         self.flip_lr = flip_lr
         self.flip_z = flip_z
