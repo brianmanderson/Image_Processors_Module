@@ -38,7 +38,7 @@ class DecodeImagesAnnotations(Decoder):
                 out_size = tuple([image_features[i] for i in size_keys])
                 image_features[key] = tf.reshape(tf.io.decode_raw(image_features[key], out_type=dtype),
                                                  out_size)
-            is_modern = True
+                is_modern = True
         if not is_modern:  # To retain backwards compatibility
             print('Please update to the latest versions of the TFRecord maker')
             image_dtype = 'float'
