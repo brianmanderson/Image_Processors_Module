@@ -795,6 +795,7 @@ class DistributeIntoRecurrenceCubes(ImageProcessor):
         image_size = primary_array.shape
         secondary_array = input_features['secondary_image']
         primary_mask = input_features['primary_mask']
+        primary_liver_array = (primary_mask > 0).astype('int8')
         '''
         Now, find centroids in the cases
         '''
@@ -825,7 +826,8 @@ class DistributeIntoRecurrenceCubes(ImageProcessor):
                 col_stop = min([image_size[2], col_center + self.cols // 2])
                 primary_cube = primary_array[z_start:z_stop, row_start:row_stop, col_start:col_stop]
                 secondary_cube = secondary_array[z_start:z_stop, row_start:row_stop, col_start:col_stop]
-                out_cube = np.stack([primary_cube, secondary_cube], axis=-1)
+                primary_liver_cube = primary_liver_array[z_start:z_stop, row_start:row_stop, col_start:col_stop]
+                out_cube = np.stack([primary_cube, secondary_cube, primary_liver_cube], axis=-1)
                 img_shape = out_cube.shape
                 pads = [self.images - img_shape[0], self.rows - img_shape[1], self.cols - img_shape[2], 0]
                 pads = [[max([0, floor(i / 2)]), max([0, ceil(i / 2)])] for i in pads]
