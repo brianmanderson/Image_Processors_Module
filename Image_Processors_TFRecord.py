@@ -758,6 +758,31 @@ class AddByValues(ImageProcessor):
         return input_features
 
 
+class AddLiverKey(ImageProcessor):
+    def __init__(self, annotation_keys=('primary_mask',), actions=('arg_max',), out_keys=('liver,',)):
+        """
+        :param annotation_keys: list of annotation keys
+        :param actions: 'sum', or 'arg_max'
+        :param out_keys: list of keys to add to dictionary
+        """
+        self.annotation_keys = annotation_keys
+        self.actions = actions
+        self.out_keys = out_keys
+
+    def parse(self, input_features):
+        _check_keys_(input_features=input_features, keys=self.annotation_keys)
+        for annotation_key, action, out_key in zip(self.annotation_keys, self.actions, self.out_keys):
+            annotation = input_features[annotation_key]
+            if action == 'sum':
+                output = np.sum(annotation, axis=-1)[..., None]
+                input_features[out_key] = output
+            elif action == 'arg_max':
+                output = np.argmax(annotation, axis=-1)[..., None]
+                output[output > 0] = 1
+                input_features[out_key] = output
+        return input_features
+
+
 class DistributeIntoRecurrenceCubes(ImageProcessor):
     def __init__(self, rows=128, cols=128, images=32):
         self.rows, self.cols, self.images = rows, cols, images
