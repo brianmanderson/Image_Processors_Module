@@ -794,6 +794,7 @@ class DistributeIntoRecurrenceCubes(ImageProcessor):
         primary_array = input_features['primary_image']
         image_size = primary_array.shape
         secondary_array = input_features['secondary_image']
+        secondary_deformed_array = input_features['secondary_image_deformed']
         primary_mask = input_features['primary_mask']
         primary_liver_array = (primary_mask > 0).astype('int8')
         '''
@@ -826,13 +827,22 @@ class DistributeIntoRecurrenceCubes(ImageProcessor):
                 col_stop = min([image_size[2], col_center + self.cols // 2])
                 primary_cube = primary_array[z_start:z_stop, row_start:row_stop, col_start:col_stop]
                 secondary_cube = secondary_array[z_start:z_stop, row_start:row_stop, col_start:col_stop]
+                secondary_deformed_cube = secondary_deformed_array[z_start:z_stop, row_start:row_stop,
+                                          col_start:col_stop]
                 primary_liver_cube = primary_liver_array[z_start:z_stop, row_start:row_stop, col_start:col_stop]
-                out_cube = np.stack([primary_cube, secondary_cube, primary_liver_cube], axis=-1)
-                img_shape = out_cube.shape
-                pads = [self.images - img_shape[0], self.rows - img_shape[1], self.cols - img_shape[2], 0]
+                cube_shape = primary_liver_cube.shape
+                pads = [self.images - cube_shape[0], self.rows - cube_shape[1], self.cols - cube_shape[2]]
                 pads = [[max([0, floor(i / 2)]), max([0, ceil(i / 2)])] for i in pads]
-                out_cube = np.pad(out_cube, pads, constant_values=np.min(out_cube))
-                temp_feature['image'] = out_cube
+                if np.max(pads) > 0:
+                    primary_cube = np.pad(primary_cube, pads, constant_values=np.min(primary_cube))
+                    secondary_cube = np.pad(secondary_cube, pads, constant_values=np.min(secondary_cube))
+                    secondary_deformed_cube = np.pad(secondary_deformed_cube, pads,
+                                                     constant_values=np.min(secondary_deformed_cube))
+                    primary_liver_cube = np.pad(primary_liver_cube, pads, constant_values=np.min(primary_liver_cube))
+                temp_feature['primary_image'] = primary_cube
+                temp_feature['secondary_image'] = secondary_cube
+                temp_feature['secondary_deformed'] = secondary_deformed_cube
+                temp_feature['primary_liver'] = primary_liver_cube
                 temp_feature['annotation'] = to_categorical(value, 2)
                 wanted_keys = ('primary_image_path', 'file_name', 'spacing')
                 for key in wanted_keys:  # Bring along anything else we care about
