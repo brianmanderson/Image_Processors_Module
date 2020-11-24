@@ -12,64 +12,99 @@ from tensorflow.python.framework import ops
 from .Plot_And_Scroll_Images.Plot_Scroll_Images import plot_scroll_Image, plt
 
 
-class Image_Processor(object):
+def _check_keys_(input_features, keys):
+    if type(keys) is list or type(keys) is tuple:
+        for key in keys:
+            assert key in input_features.keys(), 'Make sure the key you are referring to is present in the features, ' \
+                                                 '{} was not found'.format(key)
+    else:
+        assert keys in input_features.keys(), 'Make sure the key you are referring to is present in the features, ' \
+                                              '{} was not found'.format(keys)
+
+
+class ImageProcessor(object):
     def parse(self, *args, **kwargs):
         return args, kwargs
 
 
-class Decode_Images_Annotations(Image_Processor):
+class Decoder(object):
     def __init__(self, d_type_dict=None):
         self.d_type_dict = d_type_dict
 
+
+class DecodeImagesAnnotations(Decoder):
     def parse(self, image_features, *args, **kwargs):
-        image_dtype = 'float'
-        if 'image' in self.d_type_dict:
-            image_dtype = self.d_type_dict['image']
-        annotation_dtype = 'int8'
-        if 'annotation' in self.d_type_dict:
-            annotation_dtype = self.d_type_dict['annotation']
-        if 'z_images' in image_features:
-            if 'image' in image_features:
+        all_keys = list(image_features.keys())
+        is_modern = False
+        for key in image_features.keys():
+            if key.find('size') != -1:
+                continue
+            size_keys = [i for i in all_keys if i.find('size') != -1 and i.split('_size')[0] == key]  # All size keys
+            size_keys.sort(key=lambda x: x.split('_')[-1])
+            if size_keys:
+                dtype = 'float'
+                if key in self.d_type_dict:
+                    dtype = self.d_type_dict[key]
+                out_size = tuple([image_features[i] for i in size_keys])
+                image_features[key] = tf.reshape(tf.io.decode_raw(image_features[key], out_type=dtype),
+                                                 out_size)
+                is_modern = True
+        if not is_modern:  # To retain backwards compatibility
+            print('Please update to the latest versions of the TFRecord maker')
+            image_dtype = 'float'
+            if 'image' in self.d_type_dict:
+                image_dtype = self.d_type_dict['image']
+            annotation_dtype = 'int8'
+            if 'annotation' in self.d_type_dict:
+                annotation_dtype = self.d_type_dict['annotation']
+            if 'z_images' in image_features:
+                if 'image' in image_features:
+                    image_features['image'] = tf.reshape(tf.io.decode_raw(image_features['image'], out_type=image_dtype),
+                                                         (image_features['z_images'], image_features['rows'],
+                                                          image_features['cols']))
+                if 'annotation' in image_features:
+                    if 'num_classes' in image_features:
+                        image_features['annotation'] = tf.reshape(tf.io.decode_raw(image_features['annotation'],
+                                                                                   out_type=annotation_dtype),
+                                                                  (image_features['z_images'], image_features['rows'],
+                                                                   image_features['cols'], image_features['num_classes']))
+                    else:
+                        image_features['annotation'] = tf.reshape(tf.io.decode_raw(image_features['annotation'],
+                                                                                   out_type=annotation_dtype),
+                                                                  (image_features['z_images'], image_features['rows'],
+                                                                   image_features['cols']))
+            else:
                 image_features['image'] = tf.reshape(tf.io.decode_raw(image_features['image'], out_type=image_dtype),
-                                                     (image_features['z_images'], image_features['rows'],
-                                                      image_features['cols']))
-            if 'annotation' in image_features:
+                                                     (image_features['rows'], image_features['cols']))
                 if 'num_classes' in image_features:
                     image_features['annotation'] = tf.reshape(tf.io.decode_raw(image_features['annotation'],
                                                                                out_type=annotation_dtype),
-                                                              (image_features['z_images'], image_features['rows'],
-                                                               image_features['cols'], image_features['num_classes']))
+                                                              (image_features['rows'], image_features['cols'],
+                                                               image_features['num_classes']))
                 else:
                     image_features['annotation'] = tf.reshape(tf.io.decode_raw(image_features['annotation'],
                                                                                out_type=annotation_dtype),
-                                                              (image_features['z_images'], image_features['rows'],
-                                                               image_features['cols']))
-        else:
-            image_features['image'] = tf.reshape(tf.io.decode_raw(image_features['image'], out_type=image_dtype),
-                                                 (image_features['rows'], image_features['cols']))
-            if 'num_classes' in image_features:
-                image_features['annotation'] = tf.reshape(tf.io.decode_raw(image_features['annotation'],
-                                                                           out_type=annotation_dtype),
-                                                          (image_features['rows'], image_features['cols'],
-                                                           image_features['num_classes']))
-            else:
-                image_features['annotation'] = tf.reshape(tf.io.decode_raw(image_features['annotation'],
-                                                                           out_type=annotation_dtype),
-                                                          (image_features['rows'], image_features['cols']))
-        if 'spacing' in image_features:
-            spacing = tf.io.decode_raw(image_features['spacing'], out_type='float32')
-            image_features['spacing'] = spacing
-        if 'dose' in image_features:
-            dose_dtype = 'float'
-            if 'dose' in self.d_type_dict:
-                dose_dtype = self.d_type_dict['dose']
-            image_features['dose'] = tf.reshape(tf.io.decode_raw(image_features['dose'], out_type=dose_dtype),
-                                                (image_features['dose_images'], image_features['dose_rows'],
-                                                 image_features['dose_cols']))
+                                                              (image_features['rows'], image_features['cols']))
+            if 'spacing' in image_features:
+                spacing = tf.io.decode_raw(image_features['spacing'], out_type='float32')
+                image_features['spacing'] = spacing
+            if 'dose' in image_features:
+                dose_dtype = 'float'
+                if 'dose' in self.d_type_dict:
+                    dose_dtype = self.d_type_dict['dose']
+                image_features['dose'] = tf.reshape(tf.io.decode_raw(image_features['dose'], out_type=dose_dtype),
+                                                    (image_features['dose_images'], image_features['dose_rows'],
+                                                     image_features['dose_cols']))
         return image_features
 
 
-class Random_Noise(Image_Processor):
+class Decode_Images_Annotations(DecodeImagesAnnotations):
+    def __init__(self, **kwargs):
+        print('Please move from using Decode_Images_Annotations to DecodeImagesAnnotations, same arguments are passed')
+        super().__init__(**kwargs)
+
+
+class Random_Noise(ImageProcessor):
     def __init__(self, max_noise=2.5, wanted_keys=['image']):
         '''
         Return the image feature with an additive noise randomly weighted between [0.0, max_noise)
@@ -92,7 +127,20 @@ class Random_Noise(Image_Processor):
         return image_features
 
 
-class Combine_image_RT_Dose(Image_Processor):
+class CombineKeys(ImageProcessor):
+    def __init__(self, image_keys=('primary_image', 'secondary_image'), output_key='combined', axis=-1):
+        self.image_keys = image_keys
+        self.output_key = output_key
+        self.axis = axis
+
+    def parse(self, image_features, *args, **kwargs):
+        _check_keys_(input_features=image_features, keys=self.image_keys)
+        combine_images = [image_features[i] for i in self.image_keys]
+        image_features[self.output_key] = tf.concat(combine_images, axis=self.axis)
+        return image_features
+
+
+class Combine_image_RT_Dose(ImageProcessor):
     def parse(self, input_features, *args, **kwargs):
         image = input_features['image']
         rt = input_features['annotation']
@@ -102,7 +150,7 @@ class Combine_image_RT_Dose(Image_Processor):
         return input_features
 
 
-class Fuzzy_Segment_Liver_Lobes(Image_Processor):
+class Fuzzy_Segment_Liver_Lobes(ImageProcessor):
     def __init__(self, min_val=0, max_val=None, num_classes=9):
         '''
         :param variation: margin to expand region, mm. np.arange(start=0, stop=1, step=1), in mm
@@ -143,13 +191,13 @@ class Fuzzy_Segment_Liver_Lobes(Image_Processor):
         return image_features
 
 
-class Return_Outputs(Image_Processor):
+class Return_Outputs(ImageProcessor):
     '''
     No image processors should occur after this, this will turn your dictionary into a set of tensors, usually
     image, annotation
     '''
 
-    def __init__(self, wanted_keys_dict={'inputs': ['image'], 'outputs': ['annotation']}):
+    def __init__(self, wanted_keys_dict={'inputs': ('image',), 'outputs': ('annotation',)}):
         assert type(wanted_keys_dict) is dict, 'You need to pass a dictionary to Return_Outputs in the form of ' \
                                                '{"inputs":["image"],"outputs":["annotation"]}, etc.'
         self.wanted_keys_dict = wanted_keys_dict
@@ -171,7 +219,7 @@ class Return_Outputs(Image_Processor):
         return tuple(inputs), tuple(outputs)
 
 
-class Resize_Images(Image_Processor):
+class Resize_Images(ImageProcessor):
     def __init__(self, image_rows=512, image_cols=512):
         self.image_rows = tf.constant(image_rows)
         self.image_cols = tf.constant(image_cols)
@@ -186,7 +234,7 @@ class Resize_Images(Image_Processor):
         return image_features
 
 
-class Pad_Z_Images_w_Reflections(Image_Processor):
+class Pad_Z_Images_w_Reflections(ImageProcessor):
     '''
     This will not work for parallelized.. because the z dimension is None unknown to start
     '''
@@ -203,7 +251,7 @@ class Pad_Z_Images_w_Reflections(Image_Processor):
         return image_features
 
 
-class Ensure_Image_Proportions(Image_Processor):
+class Ensure_Image_Proportions(ImageProcessor):
     def __init__(self, image_rows=512, image_cols=512, preserve_aspect_ratio=False):
         self.image_rows = tf.constant(image_rows)
         self.image_cols = tf.constant(image_cols)
@@ -232,7 +280,7 @@ class Ensure_Image_Proportions(Image_Processor):
         return image_features
 
 
-class Ensure_Annotation_Range(Image_Processor):
+class Ensure_Annotation_Range(ImageProcessor):
     def parse(self, image_features, *args, **kwargs):
         annotation = image_features['annotation']
         annotation = tf.divide(annotation, tf.expand_dims(tf.reduce_sum(annotation, axis=-1), axis=-1))
@@ -240,7 +288,7 @@ class Ensure_Annotation_Range(Image_Processor):
         return image_features
 
 
-class Return_Add_Mult_Disease(Image_Processor):
+class Return_Add_Mult_Disease(ImageProcessor):
     def __init__(self, on_disease=True, change_background=False, cast_to_min=False):
         self.on_disease = on_disease
         self.cast_to_min = cast_to_min
@@ -269,7 +317,7 @@ class Return_Add_Mult_Disease(Image_Processor):
         return image_features
 
 
-class Combine_Liver_Lobe_Segments(Image_Processor):
+class Combine_Liver_Lobe_Segments(ImageProcessor):
     '''
     Combines segments 5, 6, 7 and 8 into 5
     '''
@@ -283,7 +331,19 @@ class Combine_Liver_Lobe_Segments(Image_Processor):
         return image_features
 
 
-class Expand_Dimensions(Image_Processor):
+class ExpandDimension(ImageProcessor):
+    def __init__(self, axis=-1, image_keys=('image', 'annotation')):
+        self.axis = axis
+        self.image_keys = image_keys
+
+    def parse(self, image_features, *args, **kwargs):
+        _check_keys_(image_features, self.image_keys)
+        for key in self.image_keys:
+            image_features[key] = tf.expand_dims(image_features[key], axis=self.axis)
+        return image_features
+
+
+class Expand_Dimensions(ImageProcessor):
     def __init__(self, axis=-1, on_images=True, on_annotations=False):
         self.axis = axis
         self.on_images = on_images
@@ -297,7 +357,7 @@ class Expand_Dimensions(Image_Processor):
         return image_features
 
 
-class Repeat_Channel(Image_Processor):
+class Repeat_Channel(ImageProcessor):
     def __init__(self, axis=-1, repeats=3, on_images=True, on_annotations=False):
         '''
         :param axis: axis to expand
@@ -318,7 +378,7 @@ class Repeat_Channel(Image_Processor):
         return image_features
 
 
-class Return_Lung(Image_Processor):
+class Return_Lung(ImageProcessor):
     def __init__(self, dual_output=False):
         self.dual_output = dual_output
 
@@ -328,7 +388,7 @@ class Return_Lung(Image_Processor):
         return image_features
 
 
-class MultiplyImagesByConstant(Image_Processor):
+class MultiplyImagesByConstant(ImageProcessor):
     def __init__(self, multiply_value=255.):
         '''
         :param multiply_value: Value to multiply array by
@@ -340,7 +400,7 @@ class MultiplyImagesByConstant(Image_Processor):
         return image_features
 
 
-class AddConstantToImages(Image_Processor):
+class AddConstantToImages(ImageProcessor):
     def __init__(self, add_value=255.):
         '''
         :param add_value: Value to add array by
@@ -352,7 +412,7 @@ class AddConstantToImages(Image_Processor):
         return image_features
 
 
-class V3Normalize(Image_Processor):
+class V3Normalize(ImageProcessor):
     def __init__(self):
         '''
         Normalizes a 255. image to values trained on pascal
@@ -364,7 +424,7 @@ class V3Normalize(Image_Processor):
         return image_features
 
 
-class Normalize_Images(Image_Processor):
+class Normalize_Images(ImageProcessor):
     def __init__(self, mean_val=0, std_val=1):
         '''
         :param mean_val: Mean value to normalize to
@@ -377,7 +437,7 @@ class Normalize_Images(Image_Processor):
         return image_features
 
 
-class CombineAnnotations(Image_Processor):
+class CombineAnnotations(ImageProcessor):
     def __init__(self, list_value_dictionaries=[{2: 1}]):
         '''
         :param list_value_dictionaries: a list of dictionaries for annotation values you want transformed into another,
@@ -395,7 +455,7 @@ class CombineAnnotations(Image_Processor):
         return image_features
 
 
-class Combined_Annotations(Image_Processor):
+class Combined_Annotations(ImageProcessor):
     def __init__(self, values=[tf.constant(1, dtype='int8'), tf.constant(2, dtype='int8')]):
         self.values = values
 
@@ -408,7 +468,7 @@ class Combined_Annotations(Image_Processor):
         return image_features
 
 
-class Cast_Data(Image_Processor):
+class Cast_Data(ImageProcessor):
     def __init__(self, key_type_dict=None):
         '''
         :param key_type_dict: A dictionary of keys and datatypes wanted {'image':'float32'}
@@ -487,8 +547,8 @@ def _random_flip(image, flip_index, seed, scope_name, flip_3D_together=False):
             raise ValueError('\'image\' must have either 3 or 4 dimensions.')
 
 
-class Flip_Images(Image_Processor):
-    def __init__(self, keys=['image', 'annotation'], flip_lr=True, flip_up_down=True, flip_z=False,
+class Flip_Images(ImageProcessor):
+    def __init__(self, keys=('image', 'annotation'), flip_lr=True, flip_up_down=True, flip_z=False,
                  flip_3D_together=False):
         self.flip_lr = flip_lr
         self.flip_z = flip_z
@@ -497,6 +557,7 @@ class Flip_Images(Image_Processor):
         self.flip_3D_together = flip_3D_together
 
     def parse(self, image_features, *args, **kwargs):
+        _check_keys_(input_features=image_features, keys=self.keys)
         if self.flip_lr:
             uniform_random = None
             flip_index = 1
@@ -547,7 +608,7 @@ class Flip_Images(Image_Processor):
         return image_features
 
 
-class Threshold_Images(Image_Processor):
+class Threshold_Images(ImageProcessor):
     def __init__(self, lower_bound=-np.inf, upper_bound=np.inf, divide=True):
         '''
         :param lower_bound: Lower bound to threshold images, normally -3.55 if Normalize_Images is used previously
@@ -570,7 +631,7 @@ class Threshold_Images(Image_Processor):
         return image_features
 
 
-class Add_Constant(Image_Processor):
+class Add_Constant(ImageProcessor):
     def __init__(self, value):
         self.value = tf.constant(value)
 
@@ -580,7 +641,7 @@ class Add_Constant(Image_Processor):
         return image_features
 
 
-class Resize_with_crop_pad(Image_Processor):
+class Resize_with_crop_pad(ImageProcessor):
     def __init__(self, image_rows=512, image_cols=512):
         print("Be careful.. this can severly slow down data retrieval, best to do these things while making the record")
         self.image_rows = tf.constant(image_rows)
@@ -601,7 +662,7 @@ class Resize_with_crop_pad(Image_Processor):
         return image_features
 
 
-class Clip_Images(Image_Processor):
+class Clip_Images(ImageProcessor):
     def __init__(self, annotations_index=None, bounding_box_expansion=(10, 10, 10), power_val_z=1, power_val_r=1,
                  power_val_c=1, min_images=0, min_rows=0, min_cols=0):
         self.annotations_index = annotations_index
@@ -658,7 +719,7 @@ class Clip_Images(Image_Processor):
         return image_features
 
 
-class Pull_Subset(Image_Processor):
+class Pull_Subset(ImageProcessor):
     def __init__(self, max_batch=32):
         self.max_batch = max_batch
 
@@ -671,7 +732,7 @@ class Pull_Subset(Image_Processor):
         return images, annotations
 
 
-class Pull_Bounding_Box(Image_Processor):
+class Pull_Bounding_Box(ImageProcessor):
     def __init__(self, annotation_index=None, max_cubes=10, z_images=16, rows=100, cols=100, min_volume=0, min_voxels=0,
                  max_volume=np.inf, max_voxels=np.inf):
         '''
