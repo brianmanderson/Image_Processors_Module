@@ -127,6 +127,18 @@ class Random_Noise(ImageProcessor):
         return image_features
 
 
+class CombineKeys(ImageProcessor):
+    def __init__(self, image_keys=('primary_image', 'secondary_image'), output_key='combined'):
+        self.image_keys = image_keys
+        self.output_key = output_key
+
+    def parse(self, image_features, *args, **kwargs):
+        _check_keys_(input_features=image_features, keys=self.image_keys)
+        combine_images = [image_features[i] for i in self.image_keys]
+        image_features[self.output_key] = tf.concat(combine_images, axis=-1)
+        return image_features
+
+
 class Combine_image_RT_Dose(ImageProcessor):
     def parse(self, input_features, *args, **kwargs):
         image = input_features['image']
@@ -544,6 +556,7 @@ class Flip_Images(ImageProcessor):
         self.flip_3D_together = flip_3D_together
 
     def parse(self, image_features, *args, **kwargs):
+        _check_keys_(input_features=image_features, keys=self.keys)
         if self.flip_lr:
             uniform_random = None
             flip_index = 1
