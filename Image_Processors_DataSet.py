@@ -39,7 +39,7 @@ class DecodeImagesAnnotations(Decoder):
         for key in image_features.keys():
             if key.find('size') != -1:
                 continue
-            size_keys = [i for i in all_keys if i.find('size') != -1 and i.startswith(key)]  # Find all size keys
+            size_keys = [i for i in all_keys if i.find('size') != -1 and i.split('_size')[0] == key]  # All size keys
             size_keys.sort(key=lambda x: x.split('_')[-1])
             if size_keys:
                 dtype = 'float'
