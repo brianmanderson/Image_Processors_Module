@@ -12,7 +12,17 @@ from tensorflow.python.framework import ops
 from .Plot_And_Scroll_Images.Plot_Scroll_Images import plot_scroll_Image, plt
 
 
-class Image_Processor(object):
+def _check_keys_(input_features, keys):
+    if type(keys) is list or type(keys) is tuple:
+        for key in keys:
+            assert key in input_features.keys(), 'Make sure the key you are referring to is present in the features, ' \
+                                                 '{} was not found'.format(key)
+    else:
+        assert keys in input_features.keys(), 'Make sure the key you are referring to is present in the features, ' \
+                                              '{} was not found'.format(keys)
+
+
+class ImageProcessor(object):
     def parse(self, *args, **kwargs):
         return args, kwargs
 
@@ -94,7 +104,7 @@ class Decode_Images_Annotations(DecodeImagesAnnotations):
         super().__init__(**kwargs)
 
 
-class Random_Noise(Image_Processor):
+class Random_Noise(ImageProcessor):
     def __init__(self, max_noise=2.5, wanted_keys=['image']):
         '''
         Return the image feature with an additive noise randomly weighted between [0.0, max_noise)
@@ -117,7 +127,7 @@ class Random_Noise(Image_Processor):
         return image_features
 
 
-class Combine_image_RT_Dose(Image_Processor):
+class Combine_image_RT_Dose(ImageProcessor):
     def parse(self, input_features, *args, **kwargs):
         image = input_features['image']
         rt = input_features['annotation']
@@ -127,7 +137,7 @@ class Combine_image_RT_Dose(Image_Processor):
         return input_features
 
 
-class Fuzzy_Segment_Liver_Lobes(Image_Processor):
+class Fuzzy_Segment_Liver_Lobes(ImageProcessor):
     def __init__(self, min_val=0, max_val=None, num_classes=9):
         '''
         :param variation: margin to expand region, mm. np.arange(start=0, stop=1, step=1), in mm
@@ -168,7 +178,7 @@ class Fuzzy_Segment_Liver_Lobes(Image_Processor):
         return image_features
 
 
-class Return_Outputs(Image_Processor):
+class Return_Outputs(ImageProcessor):
     '''
     No image processors should occur after this, this will turn your dictionary into a set of tensors, usually
     image, annotation
@@ -196,7 +206,7 @@ class Return_Outputs(Image_Processor):
         return tuple(inputs), tuple(outputs)
 
 
-class Resize_Images(Image_Processor):
+class Resize_Images(ImageProcessor):
     def __init__(self, image_rows=512, image_cols=512):
         self.image_rows = tf.constant(image_rows)
         self.image_cols = tf.constant(image_cols)
@@ -211,7 +221,7 @@ class Resize_Images(Image_Processor):
         return image_features
 
 
-class Pad_Z_Images_w_Reflections(Image_Processor):
+class Pad_Z_Images_w_Reflections(ImageProcessor):
     '''
     This will not work for parallelized.. because the z dimension is None unknown to start
     '''
@@ -228,7 +238,7 @@ class Pad_Z_Images_w_Reflections(Image_Processor):
         return image_features
 
 
-class Ensure_Image_Proportions(Image_Processor):
+class Ensure_Image_Proportions(ImageProcessor):
     def __init__(self, image_rows=512, image_cols=512, preserve_aspect_ratio=False):
         self.image_rows = tf.constant(image_rows)
         self.image_cols = tf.constant(image_cols)
@@ -257,7 +267,7 @@ class Ensure_Image_Proportions(Image_Processor):
         return image_features
 
 
-class Ensure_Annotation_Range(Image_Processor):
+class Ensure_Annotation_Range(ImageProcessor):
     def parse(self, image_features, *args, **kwargs):
         annotation = image_features['annotation']
         annotation = tf.divide(annotation, tf.expand_dims(tf.reduce_sum(annotation, axis=-1), axis=-1))
@@ -265,7 +275,7 @@ class Ensure_Annotation_Range(Image_Processor):
         return image_features
 
 
-class Return_Add_Mult_Disease(Image_Processor):
+class Return_Add_Mult_Disease(ImageProcessor):
     def __init__(self, on_disease=True, change_background=False, cast_to_min=False):
         self.on_disease = on_disease
         self.cast_to_min = cast_to_min
@@ -294,7 +304,7 @@ class Return_Add_Mult_Disease(Image_Processor):
         return image_features
 
 
-class Combine_Liver_Lobe_Segments(Image_Processor):
+class Combine_Liver_Lobe_Segments(ImageProcessor):
     '''
     Combines segments 5, 6, 7 and 8 into 5
     '''
@@ -308,7 +318,22 @@ class Combine_Liver_Lobe_Segments(Image_Processor):
         return image_features
 
 
-class Expand_Dimensions(Image_Processor):
+class ExpandDimension(ImageProcessor):
+    def __init__(self, axis=-1, image_keys=('image', 'annotation')):
+        self.axis = axis
+        self.image_keys = image_keys
+
+    def parse(self, image_features, *args, **kwargs):
+        for key in self.image_keys:
+
+        if self.on_images:
+            image_features['image'] = tf.expand_dims(image_features['image'], axis=self.axis)
+        if self.on_annotations:
+            image_features['annotation'] = tf.expand_dims(image_features['annotation'], axis=self.axis)
+        return image_features
+
+
+class Expand_Dimensions(ImageProcessor):
     def __init__(self, axis=-1, on_images=True, on_annotations=False):
         self.axis = axis
         self.on_images = on_images
@@ -322,7 +347,7 @@ class Expand_Dimensions(Image_Processor):
         return image_features
 
 
-class Repeat_Channel(Image_Processor):
+class Repeat_Channel(ImageProcessor):
     def __init__(self, axis=-1, repeats=3, on_images=True, on_annotations=False):
         '''
         :param axis: axis to expand
@@ -343,7 +368,7 @@ class Repeat_Channel(Image_Processor):
         return image_features
 
 
-class Return_Lung(Image_Processor):
+class Return_Lung(ImageProcessor):
     def __init__(self, dual_output=False):
         self.dual_output = dual_output
 
@@ -353,7 +378,7 @@ class Return_Lung(Image_Processor):
         return image_features
 
 
-class MultiplyImagesByConstant(Image_Processor):
+class MultiplyImagesByConstant(ImageProcessor):
     def __init__(self, multiply_value=255.):
         '''
         :param multiply_value: Value to multiply array by
@@ -365,7 +390,7 @@ class MultiplyImagesByConstant(Image_Processor):
         return image_features
 
 
-class AddConstantToImages(Image_Processor):
+class AddConstantToImages(ImageProcessor):
     def __init__(self, add_value=255.):
         '''
         :param add_value: Value to add array by
@@ -377,7 +402,7 @@ class AddConstantToImages(Image_Processor):
         return image_features
 
 
-class V3Normalize(Image_Processor):
+class V3Normalize(ImageProcessor):
     def __init__(self):
         '''
         Normalizes a 255. image to values trained on pascal
@@ -389,7 +414,7 @@ class V3Normalize(Image_Processor):
         return image_features
 
 
-class Normalize_Images(Image_Processor):
+class Normalize_Images(ImageProcessor):
     def __init__(self, mean_val=0, std_val=1):
         '''
         :param mean_val: Mean value to normalize to
@@ -402,7 +427,7 @@ class Normalize_Images(Image_Processor):
         return image_features
 
 
-class CombineAnnotations(Image_Processor):
+class CombineAnnotations(ImageProcessor):
     def __init__(self, list_value_dictionaries=[{2: 1}]):
         '''
         :param list_value_dictionaries: a list of dictionaries for annotation values you want transformed into another,
@@ -420,7 +445,7 @@ class CombineAnnotations(Image_Processor):
         return image_features
 
 
-class Combined_Annotations(Image_Processor):
+class Combined_Annotations(ImageProcessor):
     def __init__(self, values=[tf.constant(1, dtype='int8'), tf.constant(2, dtype='int8')]):
         self.values = values
 
@@ -433,7 +458,7 @@ class Combined_Annotations(Image_Processor):
         return image_features
 
 
-class Cast_Data(Image_Processor):
+class Cast_Data(ImageProcessor):
     def __init__(self, key_type_dict=None):
         '''
         :param key_type_dict: A dictionary of keys and datatypes wanted {'image':'float32'}
@@ -512,7 +537,7 @@ def _random_flip(image, flip_index, seed, scope_name, flip_3D_together=False):
             raise ValueError('\'image\' must have either 3 or 4 dimensions.')
 
 
-class Flip_Images(Image_Processor):
+class Flip_Images(ImageProcessor):
     def __init__(self, keys=('image', 'annotation'), flip_lr=True, flip_up_down=True, flip_z=False,
                  flip_3D_together=False):
         self.flip_lr = flip_lr
@@ -572,7 +597,7 @@ class Flip_Images(Image_Processor):
         return image_features
 
 
-class Threshold_Images(Image_Processor):
+class Threshold_Images(ImageProcessor):
     def __init__(self, lower_bound=-np.inf, upper_bound=np.inf, divide=True):
         '''
         :param lower_bound: Lower bound to threshold images, normally -3.55 if Normalize_Images is used previously
@@ -595,7 +620,7 @@ class Threshold_Images(Image_Processor):
         return image_features
 
 
-class Add_Constant(Image_Processor):
+class Add_Constant(ImageProcessor):
     def __init__(self, value):
         self.value = tf.constant(value)
 
@@ -605,7 +630,7 @@ class Add_Constant(Image_Processor):
         return image_features
 
 
-class Resize_with_crop_pad(Image_Processor):
+class Resize_with_crop_pad(ImageProcessor):
     def __init__(self, image_rows=512, image_cols=512):
         print("Be careful.. this can severly slow down data retrieval, best to do these things while making the record")
         self.image_rows = tf.constant(image_rows)
@@ -626,7 +651,7 @@ class Resize_with_crop_pad(Image_Processor):
         return image_features
 
 
-class Clip_Images(Image_Processor):
+class Clip_Images(ImageProcessor):
     def __init__(self, annotations_index=None, bounding_box_expansion=(10, 10, 10), power_val_z=1, power_val_r=1,
                  power_val_c=1, min_images=0, min_rows=0, min_cols=0):
         self.annotations_index = annotations_index
@@ -683,7 +708,7 @@ class Clip_Images(Image_Processor):
         return image_features
 
 
-class Pull_Subset(Image_Processor):
+class Pull_Subset(ImageProcessor):
     def __init__(self, max_batch=32):
         self.max_batch = max_batch
 
@@ -696,7 +721,7 @@ class Pull_Subset(Image_Processor):
         return images, annotations
 
 
-class Pull_Bounding_Box(Image_Processor):
+class Pull_Bounding_Box(ImageProcessor):
     def __init__(self, annotation_index=None, max_cubes=10, z_images=16, rows=100, cols=100, min_volume=0, min_voxels=0,
                  max_volume=np.inf, max_voxels=np.inf):
         '''
