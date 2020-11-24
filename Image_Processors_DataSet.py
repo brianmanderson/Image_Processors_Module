@@ -324,12 +324,9 @@ class ExpandDimension(ImageProcessor):
         self.image_keys = image_keys
 
     def parse(self, image_features, *args, **kwargs):
+        _check_keys_(image_features, self.image_keys)
         for key in self.image_keys:
-
-        if self.on_images:
-            image_features['image'] = tf.expand_dims(image_features['image'], axis=self.axis)
-        if self.on_annotations:
-            image_features['annotation'] = tf.expand_dims(image_features['annotation'], axis=self.axis)
+            image_features[key] = tf.expand_dims(image_features[key], axis=self.axis)
         return image_features
 
 
