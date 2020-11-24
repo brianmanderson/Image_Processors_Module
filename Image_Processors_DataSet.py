@@ -128,14 +128,15 @@ class Random_Noise(ImageProcessor):
 
 
 class CombineKeys(ImageProcessor):
-    def __init__(self, image_keys=('primary_image', 'secondary_image'), output_key='combined'):
+    def __init__(self, image_keys=('primary_image', 'secondary_image'), output_key='combined', axis=-1):
         self.image_keys = image_keys
         self.output_key = output_key
+        self.axis = axis
 
     def parse(self, image_features, *args, **kwargs):
         _check_keys_(input_features=image_features, keys=self.image_keys)
         combine_images = [image_features[i] for i in self.image_keys]
-        image_features[self.output_key] = tf.concat(combine_images, axis=-1)
+        image_features[self.output_key] = tf.concat(combine_images, axis=self.axis)
         return image_features
 
 
