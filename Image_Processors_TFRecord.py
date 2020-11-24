@@ -841,7 +841,7 @@ class DistributeIntoRecurrenceCubes(ImageProcessor):
                     primary_liver_cube = np.pad(primary_liver_cube, pads, constant_values=np.min(primary_liver_cube))
                 temp_feature['primary_image'] = primary_cube
                 temp_feature['secondary_image'] = secondary_cube
-                temp_feature['secondary_deformed'] = secondary_deformed_cube
+                temp_feature['secondary_image_deformed'] = secondary_deformed_cube
                 temp_feature['primary_liver'] = primary_liver_cube
                 temp_feature['annotation'] = to_categorical(value, 2)
                 wanted_keys = ('primary_image_path', 'file_name', 'spacing')
