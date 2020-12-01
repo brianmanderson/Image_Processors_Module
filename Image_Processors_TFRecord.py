@@ -99,7 +99,12 @@ def serialize_example(input_features_dictionary, image_processors=None, verbose=
                  record_writer=record_writer)
 
 
-def write_record(filename, input_features):
+def dictionary_to_tf_record(filename, input_features):
+    """
+    :param filename: .tfrecord filename
+    :param input_features: dictionary of input_features, things like {'image': np.array}
+    :return: empty dictionary
+    """
     features = {}
     d_type = {}
     writer = tf.io.TFRecordWriter(filename)
@@ -135,7 +140,7 @@ class RecordWriter(object):
             if not filename.endswith('.tfrecord'):
                 filename += '.tfrecord'
             if not os.path.exists(filename) or self.rewrite:
-                write_record(filename=filename, input_features=input_features)
+                dictionary_to_tf_record(filename=filename, input_features=input_features)
             break
 
 
@@ -164,7 +169,7 @@ class RecordWriterRecurrence(RecordWriter):
                 filename = os.path.join(out_path,
                                         image_name.replace('.tfrecord', '_Recurrence_{}.tfrecord'.format(recurred)))
             if not os.path.exists(filename) or self.rewrite:
-                write_record(filename=filename, input_features={'out_example': example})
+                dictionary_to_tf_record(filename=filename, input_features={'out_example': example})
 
 
 def get_features(features, image_processors=None, verbose=0, record_writer=None):
