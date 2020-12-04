@@ -824,20 +824,36 @@ class DistributeIntoRecurrenceCubes(ImageProcessor):
             for index, centroid in enumerate(centroids):
                 temp_feature = OrderedDict()
                 col_center, row_center, z_center = centroid
-                z_start = max([0, z_center - self.images // 2])
-                z_stop = min([image_size[0], z_center + self.images // 2])
-                row_start = max([0, row_center - self.rows // 2])
-                row_stop = min([image_size[1], row_center + self.rows // 2])
-                col_start = max([0, col_center - self.cols // 2])
-                col_stop = min([image_size[2], col_center + self.cols // 2])
-                primary_cube = primary_array[z_start:z_stop, row_start:row_stop, col_start:col_stop]
-                secondary_cube = secondary_array[z_start:z_stop, row_start:row_stop, col_start:col_stop]
-                secondary_deformed_cube = secondary_deformed_array[z_start:z_stop, row_start:row_stop,
-                                          col_start:col_stop]
-                primary_liver_cube = primary_liver_array[z_start:z_stop, row_start:row_stop, col_start:col_stop]
-                cube_shape = primary_liver_cube.shape
-                pads = [self.images - cube_shape[0], self.rows - cube_shape[1], self.cols - cube_shape[2]]
-                pads = [[max([0, floor(i / 2)]), max([0, ceil(i / 2)])] for i in pads]
+                z_start_pad, z_stop_pad, r_start_pad, r_stop_pad, c_start_pad, c_stop_pad = 0, 0, 0, 0, 0, 0
+                z_start = z_center - self.images // 2
+                if z_start < 0:
+                    z_start_pad = abs(z_start)
+                    z_start = 0
+                z_stop = z_center + self.images // 2
+                if z_stop > image_size[0]:
+                    z_stop_pad = z_stop - image_size[0]
+                    z_stop = image_size[0]
+                r_start = row_center - self.rows // 2
+                if r_start < 0:
+                    r_start_pad = abs(r_start)
+                    r_start = 0
+                r_stop = row_center + self.rows // 2
+                if r_stop > image_size[1]:
+                    r_stop_pad = r_stop - image_size[1]
+                    r_stop = image_size[1]
+                c_start = col_center - self.cols // 2
+                if c_start < 0:
+                    c_start_pad = abs(c_start)
+                    c_start = 0
+                c_stop = col_center + self.cols // 2
+                if c_stop > image_size[2]:
+                    c_stop_pad = c_stop - image_size[2]
+                    c_stop = image_size[2]
+                primary_cube = primary_array[z_start:z_stop, r_start:r_stop, c_start:c_stop]
+                secondary_cube = secondary_array[z_start:z_stop, r_start:r_stop, c_start:c_stop]
+                secondary_deformed_cube = secondary_deformed_array[z_start:z_stop, r_start:r_stop, c_start:c_stop]
+                primary_liver_cube = primary_liver_array[z_start:z_stop, r_start:r_stop, c_start:c_stop]
+                pads = [[z_start_pad, z_stop_pad], [r_start_pad, r_stop_pad], [c_start_pad, c_stop_pad]]
                 if np.max(pads) > 0:
                     primary_cube = np.pad(primary_cube, pads, constant_values=np.min(primary_cube))
                     secondary_cube = np.pad(secondary_cube, pads, constant_values=np.min(secondary_cube))
