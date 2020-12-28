@@ -425,15 +425,17 @@ class V3Normalize(ImageProcessor):
 
 
 class Normalize_Images(ImageProcessor):
-    def __init__(self, mean_val=0, std_val=1):
+    def __init__(self, mean_val=0, std_val=1, image_key='image'):
         '''
         :param mean_val: Mean value to normalize to
         :param std_val: Standard deviation value to normalize to
         '''
         self.mean_val, self.std_val = tf.constant(mean_val, dtype='float32'), tf.constant(std_val, dtype='float32')
+        self.image_key = image_key
 
     def parse(self, image_features, *args, **kwargs):
-        image_features['image'] = (image_features['image'] - self.mean_val) / self.std_val
+        _check_keys_(image_features, self.image_key)
+        image_features[self.image_key] = (image_features[self.image_key] - self.mean_val) / self.std_val
         return image_features
 
 
