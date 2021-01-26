@@ -65,7 +65,11 @@ def _int64_feature(value):
     return tf.train.Feature(int64_list=tf.train.Int64List(value=[value]))
 
 
-def return_example_proto(base_dictionary, image_dictionary_for_pickle={}, data_type_dictionary={}):
+def return_example_proto(base_dictionary, image_dictionary_for_pickle=None, data_type_dictionary=None):
+    if image_dictionary_for_pickle is None:
+        image_dictionary_for_pickle = {}
+    if data_type_dictionary is None:
+        data_type_dictionary = {}
     feature = {}
     for key in base_dictionary:
         data = base_dictionary[key]
@@ -185,7 +189,9 @@ def get_features(features, image_processors=None, verbose=0, record_writer=None)
         record_writer.write_records(features)
 
 
-def down_dictionary(input_dictionary, out_dictionary=OrderedDict(), out_index=0):
+def down_dictionary(input_dictionary, out_dictionary=None, out_index=0):
+    if out_dictionary is None:
+        out_dictionary = OrderedDict()
     for key in input_dictionary.keys():
         data = input_dictionary[key]
         if type(data) is dict or type(data) is OrderedDict:
