@@ -77,7 +77,9 @@ class Image_Processor(object):
                 return self.start_stop_dict[path_key][file_key]['spacing']
         return None
 
-    def set_start_stop_dict(self, start_stop_dict={}):
+    def set_start_stop_dict(self, start_stop_dict=None):
+        if start_stop_dict is None:
+            start_stop_dict = {}
         self.start_stop_dict = start_stop_dict
         return None
 
