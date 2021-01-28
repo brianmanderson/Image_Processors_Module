@@ -440,17 +440,18 @@ class Normalize_Images(ImageProcessor):
 
 
 class ArgMax(ImageProcessor):
-    def __init__(self, image_keys=('annotation',)):
-        '''
-        :param mean_val: Mean value to normalize to
-        :param std_val: Standard deviation value to normalize to
-        '''
-        self.mean_val, self.std_val = tf.constant(mean_val, dtype='float32'), tf.constant(std_val, dtype='float32')
-        self.image_key = image_key
+    def __init__(self, annotation_keys=('annotation',), axis=-1):
+        """
+        :param annotation_keys: tuple of keys to perform arg_max across
+        :param axis: axis across which to arg max
+        """
+        self.axis = axis
+        self.annotation_keys = annotation_keys
 
     def parse(self, image_features, *args, **kwargs):
-        _check_keys_(image_features, self.image_key)
-        image_features[self.image_key] = (image_features[self.image_key] - self.mean_val) / self.std_val
+        _check_keys_(image_features, self.annotation_keys)
+        for key in self.annotation_keys:
+            image_features[key] = tf.argmax(image_features[key], axis=self.axis)
         return image_features
 
 
