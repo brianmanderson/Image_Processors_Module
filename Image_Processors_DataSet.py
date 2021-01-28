@@ -439,6 +439,21 @@ class Normalize_Images(ImageProcessor):
         return image_features
 
 
+class ArgMax(ImageProcessor):
+    def __init__(self, image_keys=('annotation',)):
+        '''
+        :param mean_val: Mean value to normalize to
+        :param std_val: Standard deviation value to normalize to
+        '''
+        self.mean_val, self.std_val = tf.constant(mean_val, dtype='float32'), tf.constant(std_val, dtype='float32')
+        self.image_key = image_key
+
+    def parse(self, image_features, *args, **kwargs):
+        _check_keys_(image_features, self.image_key)
+        image_features[self.image_key] = (image_features[self.image_key] - self.mean_val) / self.std_val
+        return image_features
+
+
 class CombineAnnotations(ImageProcessor):
     def __init__(self, list_value_dictionaries=[{2: 1}]):
         '''
