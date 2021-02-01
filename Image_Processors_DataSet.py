@@ -439,6 +439,22 @@ class Normalize_Images(ImageProcessor):
         return image_features
 
 
+class ArgMax(ImageProcessor):
+    def __init__(self, annotation_keys=('annotation',), axis=-1):
+        """
+        :param annotation_keys: tuple of keys to perform arg_max across
+        :param axis: axis across which to arg max
+        """
+        self.axis = axis
+        self.annotation_keys = annotation_keys
+
+    def parse(self, image_features, *args, **kwargs):
+        _check_keys_(image_features, self.annotation_keys)
+        for key in self.annotation_keys:
+            image_features[key] = tf.argmax(image_features[key], axis=self.axis)
+        return image_features
+
+
 class CombineAnnotations(ImageProcessor):
     def __init__(self, list_value_dictionaries=[{2: 1}]):
         '''
