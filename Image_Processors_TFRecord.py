@@ -812,6 +812,7 @@ class DistributeIntoRecurrenceCubes(ImageProcessor):
         Now, find centroids in the cases
         '''
         Connected_Component_Filter = sitk.ConnectedComponentImageFilter()
+        Connected_Component_Filter.FullyConnectedOn()
         stats = sitk.LabelShapeStatisticsImageFilter()
 
         no_recurred_image = sitk.GetImageFromArray((primary_mask == 1).astype('int'))
