@@ -655,7 +655,6 @@ class Distribute_into_3D(ImageProcessor):
         image_base = input_features['image']
         annotation_base = input_features['annotation']
         image_path = input_features['image_path']
-        spacing = input_features['spacing']
         z_images_base, rows, cols = image_base.shape
         if self.max_rows != np.inf:
             rows = min([rows, self.max_rows])
@@ -689,7 +688,6 @@ class Distribute_into_3D(ImageProcessor):
             image_features['annotation'] = annotation
             image_features['start'] = start
             image_features['stop'] = stop
-            image_features['spacing'] = spacing
             for key in input_features.keys():
                 if key not in image_features.keys():
                     image_features[key] = input_features[key]  # Pass along all other keys.. be careful
@@ -705,7 +703,6 @@ class Distribute_into_2D(ImageProcessor):
         image = input_features['image']
         annotation = input_features['annotation']
         image_path = input_features['image_path']
-        spacing = input_features['spacing']
         z_images_base, rows, cols = annotation.shape[:3]
         if len(annotation.shape) > 3:
             input_features['num_classes'] = annotation.shape[-1]
@@ -714,7 +711,6 @@ class Distribute_into_2D(ImageProcessor):
             image_features['image_path'] = image_path
             image_features['image'] = image[index]
             image_features['annotation'] = annotation[index]
-            image_features['spacing'] = spacing[:-1]
             for key in input_features.keys():
                 if key not in image_features.keys():
                     image_features[key] = input_features[key]  # Pass along all other keys.. be careful
