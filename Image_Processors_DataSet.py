@@ -456,21 +456,27 @@ class ArgMax(ImageProcessor):
 
 
 class CombineAnnotations(ImageProcessor):
-    def __init__(self, key_value_dicationary={'annotation': {'from': 2, 'to': 1}}):
+    def __init__(self, key_list=('annotation',), from_list=(2,), to_list=(1,)):
         '''
         :param list_value_dictionaries: a list of dictionaries for annotation values you want transformed into another,
         default is 2 -> 1
         '''
-        self.key_value_dicationary = key_value_dicationary
+        self.key_list = key_list
+        self.from_list = from_list
+        self.to_list = to_list
 
     def parse(self, image_features, *args, **kwargs):
-        for key in self.key_value_dicationary:
-            _check_keys_(input_features=image_features, keys=key)
-            value = tf.constant(self.key_value_dicationary[key]['to'], dtype=image_features[key].dtype)
-            value_key = tf.constant(self.key_value_dicationary[key]['from'], dtype=image_features[key].dtype)
-            image_features[key] = tf.where(image_features[key] == value_key,
-                                                    value, image_features[key])
+        _check_keys_(input_features=image_features, keys=self.key_list)
+        for key, from_value, to_value in zip(self.key_list, self.from_list, self.to_list):
+            from_tensor = tf.constant(from_value, dtype=image_features[key].dtype)
+            to_tensor = tf.constant(to_value, dtype=image_features[key].dtype)
+            image_features[key] = tf.where(image_features[key] == from_tensor, to_tensor, image_features[key])
         return image_features
+
+
+class MaskKeys(CombineAnnotations):
+    def __init__(self, key_list=('annotation',), from_list=(2,), to_list=(1,)):
+        super(MaskKeys).__init__(key_list=key_list, from_list=from_list, to_list=to_list)
 
 
 class Combined_Annotations(ImageProcessor):
