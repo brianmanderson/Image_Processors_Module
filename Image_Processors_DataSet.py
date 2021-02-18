@@ -456,21 +456,28 @@ class ArgMax(ImageProcessor):
 
 
 class CombineAnnotations(ImageProcessor):
-    def __init__(self, list_value_dictionaries=[{2: 1}]):
-        '''
-        :param list_value_dictionaries: a list of dictionaries for annotation values you want transformed into another,
-        default is 2 -> 1
-        '''
-        self.list_value_dictionaries = list_value_dictionaries
+    def __init__(self, key_tuple=('annotation',), from_values_tuple=(2,), to_values_tuple=(1,)):
+        """
+        :param key_tuple: tuple of key names that will be present in image_features
+        :param from_values_tuple: tuple of values that we will change from
+        :param to_values_tuple: tuple of values that we will change to
+        """
+        self.key_list = key_tuple
+        self.from_list = from_values_tuple
+        self.to_list = to_values_tuple
 
     def parse(self, image_features, *args, **kwargs):
-        for value_dictionary in self.list_value_dictionaries:
-            for value_key in value_dictionary:
-                value = tf.constant(value_dictionary[value_key], dtype=image_features['annotation'].dtype)
-                value_key = tf.constant(value_key, dtype=image_features['annotation'].dtype)
-                image_features['annotation'] = tf.where(image_features['annotation'] == value_key,
-                                                        value, image_features['annotation'])
+        _check_keys_(input_features=image_features, keys=self.key_list)
+        for key, from_value, to_value in zip(self.key_list, self.from_list, self.to_list):
+            from_tensor = tf.constant(from_value, dtype=image_features[key].dtype)
+            to_tensor = tf.constant(to_value, dtype=image_features[key].dtype)
+            image_features[key] = tf.where(image_features[key] == from_tensor, to_tensor, image_features[key])
         return image_features
+
+
+class MaskKeys(CombineAnnotations):
+    def __init__(self, key_tuple=('annotation',), from_values_tuple=(2,), to_values_tuple=(1,)):
+        super().__init__(key_tuple=key_tuple, from_values_tuple=from_values_tuple, to_values_tuple=to_values_tuple)
 
 
 class Combined_Annotations(ImageProcessor):
@@ -488,9 +495,9 @@ class Combined_Annotations(ImageProcessor):
 
 class Cast_Data(ImageProcessor):
     def __init__(self, key_type_dict=None):
-        '''
+        """
         :param key_type_dict: A dictionary of keys and datatypes wanted {'image':'float32'}
-        '''
+        """
         assert key_type_dict is not None and type(key_type_dict) is dict, 'Need to provide a key_type_dict, something' \
                                                                           ' like {"image":"float32"}'
         self.key_type_dict = key_type_dict
