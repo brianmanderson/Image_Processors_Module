@@ -806,23 +806,32 @@ class DistributeIntoRecurrenceCubes(ImageProcessor):
         '''
         Now, find centroids in the cases
         '''
-        Connected_Component_Filter = sitk.ConnectedComponentImageFilter()
-        Connected_Component_Filter.FullyConnectedOn()
-        stats = sitk.LabelShapeStatisticsImageFilter()
+        Connected_Component_Filter_no_recurred = sitk.ConnectedComponentImageFilter()
+        Connected_Component_Filter_no_recurred.FullyConnectedOn()
+        stats_no_recurred = sitk.LabelShapeStatisticsImageFilter()
 
         no_recurred_image = sitk.GetImageFromArray((primary_mask == 1).astype('int'))
-        connected_image = Connected_Component_Filter.Execute(no_recurred_image)
-        stats.Execute(connected_image)
-        no_recurrence_centroids = [no_recurred_image.TransformPhysicalPointToIndex(stats.GetCentroid(l))
-                                   for l in stats.GetLabels()]
+        connected_image_no_recurred = Connected_Component_Filter_no_recurred.Execute(no_recurred_image)
+        stats_no_recurred.Execute(connected_image_no_recurred)
+        no_recurrence_labels = [l for l in stats_no_recurred.GetLabels()]
+        no_recurrence_centroids = [no_recurred_image.TransformPhysicalPointToIndex(stats_no_recurred.GetCentroid(l))
+                                   for l in no_recurrence_labels]
+
+
+        Connected_Component_Filter_recurred = sitk.ConnectedComponentImageFilter()
+        Connected_Component_Filter_recurred.FullyConnectedOn()
+        stats_recurred = sitk.LabelShapeStatisticsImageFilter()
 
         recurred_image = sitk.GetImageFromArray((primary_mask == 2).astype('int'))
-        connected_image = Connected_Component_Filter.Execute(recurred_image)
-        stats.Execute(connected_image)
-        recurrence_centroids = [recurred_image.TransformPhysicalPointToIndex(stats.GetCentroid(l))
-                                for l in stats.GetLabels()]
-        for value, cube_name, centroids in zip([0, 1], ['Non_Recurrence_Cube_{}', 'Recurrence_Cube_{}'],
-                                               [no_recurrence_centroids, recurrence_centroids]):
+        connected_image_recurred = Connected_Component_Filter_recurred.Execute(recurred_image)
+        stats_recurred.Execute(connected_image_recurred)
+        recurrence_labels = [l for l in stats_recurred.GetLabels()]
+        recurrence_centroids = [recurred_image.TransformPhysicalPointToIndex(stats_recurred.GetCentroid(l))
+                                for l in recurrence_labels]
+        for value, cube_name, centroids, label, image in zip([0, 1], ['Non_Recurrence_Cube_{}', 'Recurrence_Cube_{}'],
+                                                             [no_recurrence_centroids, recurrence_centroids],
+                                                             [no_recurrence_labels, recurrence_labels],
+                                                             [connected_image_no_recurred, connected_image_recurred]):
             for index, centroid in enumerate(centroids):
                 temp_feature = OrderedDict()
                 col_center, row_center, z_center = centroid
@@ -854,6 +863,11 @@ class DistributeIntoRecurrenceCubes(ImageProcessor):
                 primary_cube = primary_array[z_start:z_stop, r_start:r_stop, c_start:c_stop]
                 secondary_cube = secondary_array[z_start:z_stop, r_start:r_stop, c_start:c_stop]
                 secondary_deformed_cube = secondary_deformed_array[z_start:z_stop, r_start:r_stop, c_start:c_stop]
+                index_mask = sitk.GetArrayFromImage(image)
+                index_mask[index_mask != label[index]] = 0
+                index_mask[index_mask > 0] = 1
+                index_mask = index_mask.astype('int')
+                index_mask = index_mask[z_start:z_stop, r_start:r_stop, c_start:c_stop]
                 primary_liver_cube = primary_mask[z_start:z_stop, r_start:r_stop, c_start:c_stop]
                 pads = [[z_start_pad, z_stop_pad], [r_start_pad, r_stop_pad], [c_start_pad, c_stop_pad]]
                 if np.max(pads) > 0:
@@ -862,12 +876,13 @@ class DistributeIntoRecurrenceCubes(ImageProcessor):
                     secondary_deformed_cube = np.pad(secondary_deformed_cube, pads,
                                                      constant_values=np.min(secondary_deformed_cube))
                     primary_liver_cube = np.pad(primary_liver_cube, pads, constant_values=np.min(primary_liver_cube))
+                    index_mask = np.pad(index_mask, pads, constant_values=np.min(index_mask))
                 temp_feature['primary_image'] = primary_cube
                 temp_feature['secondary_image'] = secondary_cube
                 temp_feature['secondary_image_deformed'] = secondary_deformed_cube
-                primary_liver_cube[primary_liver_cube == 3] = -1  # Make it so we have liver at 1, and disease as 2
-                primary_liver_cube[primary_liver_cube == 1] = 2
-                primary_liver_cube = np.abs(primary_liver_cube).astype('int8')
+                primary_liver_cube[primary_liver_cube > 0] = 1  # Make it so we have liver at 1, and disease as 2
+                primary_liver_cube[index_mask == 1] = 2
+                primary_liver_cube = primary_liver_cube.astype('int8')
                 temp_feature['primary_liver'] = primary_liver_cube
                 temp_feature['annotation'] = to_categorical(value, 2)
                 wanted_keys = ('primary_image_path', 'file_name', 'spacing')
