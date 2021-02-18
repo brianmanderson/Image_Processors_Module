@@ -807,7 +807,6 @@ class DistributeIntoRecurrenceCubes(ImageProcessor):
         secondary_array = input_features['secondary_image']
         secondary_deformed_array = input_features['secondary_image_deformed']
         primary_mask = input_features['primary_mask']
-        primary_liver_array = (primary_mask > 0).astype('int8')
         '''
         Now, find centroids in the cases
         '''
@@ -859,7 +858,7 @@ class DistributeIntoRecurrenceCubes(ImageProcessor):
                 primary_cube = primary_array[z_start:z_stop, r_start:r_stop, c_start:c_stop]
                 secondary_cube = secondary_array[z_start:z_stop, r_start:r_stop, c_start:c_stop]
                 secondary_deformed_cube = secondary_deformed_array[z_start:z_stop, r_start:r_stop, c_start:c_stop]
-                primary_liver_cube = primary_liver_array[z_start:z_stop, r_start:r_stop, c_start:c_stop]
+                primary_liver_cube = primary_mask[z_start:z_stop, r_start:r_stop, c_start:c_stop]
                 pads = [[z_start_pad, z_stop_pad], [r_start_pad, r_stop_pad], [c_start_pad, c_stop_pad]]
                 if np.max(pads) > 0:
                     primary_cube = np.pad(primary_cube, pads, constant_values=np.min(primary_cube))
@@ -870,6 +869,9 @@ class DistributeIntoRecurrenceCubes(ImageProcessor):
                 temp_feature['primary_image'] = primary_cube
                 temp_feature['secondary_image'] = secondary_cube
                 temp_feature['secondary_image_deformed'] = secondary_deformed_cube
+                primary_liver_cube[primary_liver_cube == 3] = -1  # Make it so we have liver at 1, and disease as 2
+                primary_liver_cube[primary_liver_cube == 1] = 2
+                primary_liver_cube = np.abs(primary_liver_cube).astype('int8')
                 temp_feature['primary_liver'] = primary_liver_cube
                 temp_feature['annotation'] = to_categorical(value, 2)
                 wanted_keys = ('primary_image_path', 'file_name', 'spacing')
