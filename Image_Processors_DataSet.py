@@ -456,20 +456,20 @@ class ArgMax(ImageProcessor):
 
 
 class CombineAnnotations(ImageProcessor):
-    def __init__(self, list_value_dictionaries=[{2: 1}]):
+    def __init__(self, key_value_dicationary={'annotation': {'from': 2, 'to': 1}}):
         '''
         :param list_value_dictionaries: a list of dictionaries for annotation values you want transformed into another,
         default is 2 -> 1
         '''
-        self.list_value_dictionaries = list_value_dictionaries
+        self.key_value_dicationary = key_value_dicationary
 
     def parse(self, image_features, *args, **kwargs):
-        for value_dictionary in self.list_value_dictionaries:
-            for value_key in value_dictionary:
-                value = tf.constant(value_dictionary[value_key], dtype=image_features['annotation'].dtype)
-                value_key = tf.constant(value_key, dtype=image_features['annotation'].dtype)
-                image_features['annotation'] = tf.where(image_features['annotation'] == value_key,
-                                                        value, image_features['annotation'])
+        for key in self.key_value_dicationary:
+            _check_keys_(input_features=image_features, keys=key)
+            value = tf.constant(self.key_value_dicationary[key]['to'], dtype=image_features[key].dtype)
+            value_key = tf.constant(self.key_value_dicationary[key]['from'], dtype=image_features[key].dtype)
+            image_features[key] = tf.where(image_features[key] == value_key,
+                                                    value, image_features[key])
         return image_features
 
 
