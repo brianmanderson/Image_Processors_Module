@@ -661,12 +661,18 @@ class Threshold_Images(ImageProcessor):
 
 
 class Add_Constant(ImageProcessor):
-    def __init__(self, value):
-        self.value = tf.constant(value)
+    def __init__(self, keys=('image',), values=(0,)):
+        """
+        :param keys: tuple of keys for addition
+        :param values: tuple of values for addition
+        """
+        self.keys = keys
+        self.values = values
 
     def parse(self, image_features, *args, **kwargs):
-        i = image_features['image']
-        image_features['image'] = tf.add(i, tf.cast(self.value, i.dtype))
+        _check_keys_(input_features=image_features, keys=self.keys)
+        for key, value in zip(self.keys, self.values):
+            image_features[key] = tf.add(image_features[key], tf.cast(value, image_features[key].dtype))
         return image_features
 
 
