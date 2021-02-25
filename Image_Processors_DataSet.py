@@ -636,10 +636,12 @@ class Flip_Images(ImageProcessor):
 
 class Threshold_Images(ImageProcessor):
     def __init__(self, keys=('image',), lower_bounds=(-np.inf,), upper_bounds=(np.inf,), divides=(True,)):
-        '''
-        :param lower_bound: Lower bound to threshold images, normally -3.55 if Normalize_Images is used previously
-        :param upper_bound: Upper bound to threshold images, normally 3.55 if Normalize_Images is used previously
-        '''
+        """
+        :param keys: tuple of image keys
+        :param lower_bounds: tuple of bounds
+        :param upper_bounds: tuple of bounds
+        :param divides: boolean if you want to divide
+        """
         self.lower_bounds = lower_bounds
         self.upper_bounds = upper_bounds
         self.keys = keys
