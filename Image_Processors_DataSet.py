@@ -635,25 +635,26 @@ class Flip_Images(ImageProcessor):
 
 
 class Threshold_Images(ImageProcessor):
-    def __init__(self, lower_bound=-np.inf, upper_bound=np.inf, divide=True):
+    def __init__(self, keys=('image',), lower_bounds=(-np.inf,), upper_bounds=(np.inf,), divides=(True,)):
         '''
         :param lower_bound: Lower bound to threshold images, normally -3.55 if Normalize_Images is used previously
         :param upper_bound: Upper bound to threshold images, normally 3.55 if Normalize_Images is used previously
         '''
-        self.lower = tf.constant(lower_bound, dtype='float32')
-        self.upper = tf.constant(upper_bound, dtype='float32')
-        self.divide = divide
+        self.lower_bounds = lower_bounds
+        self.upper_bounds = upper_bounds
+        self.keys = keys
+        self.divides = divides
 
     def parse(self, image_features, *args, **kwargs):
-        image_features['image'] = tf.where(
-            image_features['image'] > tf.cast(self.upper, dtype=image_features['image'].dtype),
-            tf.cast(self.upper, dtype=image_features['image'].dtype), image_features['image'])
-        image_features['image'] = tf.where(
-            image_features['image'] < tf.cast(self.lower, dtype=image_features['image'].dtype),
-            tf.cast(self.lower, dtype=image_features['image'].dtype), image_features['image'])
-        if self.divide:
-            image_features['image'] = tf.divide(image_features['image'], tf.cast(tf.subtract(self.upper, self.lower),
-                                                                                 dtype=image_features['image'].dtype))
+        _check_keys_(image_features, self.keys)
+        for key, lower_bound, upper_bound, divide in zip(self.keys, self.lower_bounds, self.upper_bounds, self.divides):
+            image_features[key] = tf.where(image_features[key] > tf.cast(upper_bound, dtype=image_features[key].dtype),
+                                           tf.cast(upper_bound, dtype=image_features[key].dtype), image_features[key])
+            image_features[key] = tf.where(image_features[key] < tf.cast(lower_bound, dtype=image_features[key].dtype),
+                                           tf.cast(lower_bound, dtype=image_features[key].dtype), image_features[key])
+            if divide:
+                image_features[key] = tf.divide(image_features[key], tf.cast(tf.subtract(upper_bound, lower_bound),
+                                                                             dtype=image_features[key].dtype))
         return image_features
 
 
