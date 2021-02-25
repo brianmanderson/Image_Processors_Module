@@ -389,27 +389,44 @@ class Return_Lung(ImageProcessor):
 
 
 class MultiplyImagesByConstant(ImageProcessor):
-    def __init__(self, multiply_value=255.):
-        '''
-        :param multiply_value: Value to multiply array by
-        '''
-        self.multiply_value = tf.constant(multiply_value, dtype='float32')
+    def __init__(self, keys=('image',), values=(0,)):
+        """
+        :param keys: tuple of keys for addition
+        :param values: tuple of values for addition
+        """
+        self.keys = keys
+        self.values = values
 
     def parse(self, image_features, *args, **kwargs):
-        image_features['image'] = image_features['image'] * self.multiply_value
+        _check_keys_(input_features=image_features, keys=self.keys)
+        for key, value in zip(self.keys, self.values):
+            image_features[key] = tf.multiply(image_features[key], tf.cast(value, image_features[key].dtype))
         return image_features
 
 
-class AddConstantToImages(ImageProcessor):
-    def __init__(self, add_value=255.):
-        '''
-        :param add_value: Value to add array by
-        '''
-        self.add_value = tf.constant(add_value, dtype='float32')
+class Add_Constant(ImageProcessor):
+    def __init__(self, keys=('image',), values=(0,)):
+        """
+        :param keys: tuple of keys for addition
+        :param values: tuple of values for addition
+        """
+        self.keys = keys
+        self.values = values
 
     def parse(self, image_features, *args, **kwargs):
-        image_features['image'] = image_features['image'] + self.add_value
+        _check_keys_(input_features=image_features, keys=self.keys)
+        for key, value in zip(self.keys, self.values):
+            image_features[key] = tf.add(image_features[key], tf.cast(value, image_features[key].dtype))
         return image_features
+
+
+class AddConstantToImages(Add_Constant):
+    def __init__(self, keys=('image',), values=(0,)):
+        """
+        :param keys: tuple of keys for addition
+        :param values: tuple of values for addition
+        """
+        super().__init__(keys=keys, values=values)
 
 
 class V3Normalize(ImageProcessor):
@@ -662,22 +679,6 @@ class Threshold_Images(ImageProcessor):
             if divide:
                 image_features[key] = tf.divide(image_features[key], tf.cast(tf.subtract(upper_bound, lower_bound),
                                                                              dtype=image_features[key].dtype))
-        return image_features
-
-
-class Add_Constant(ImageProcessor):
-    def __init__(self, keys=('image',), values=(0,)):
-        """
-        :param keys: tuple of keys for addition
-        :param values: tuple of values for addition
-        """
-        self.keys = keys
-        self.values = values
-
-    def parse(self, image_features, *args, **kwargs):
-        _check_keys_(input_features=image_features, keys=self.keys)
-        for key, value in zip(self.keys, self.values):
-            image_features[key] = tf.add(image_features[key], tf.cast(value, image_features[key].dtype))
         return image_features
 
 
