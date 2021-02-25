@@ -389,7 +389,7 @@ class Return_Lung(ImageProcessor):
 
 
 class MultiplyImagesByConstant(ImageProcessor):
-    def __init__(self, keys=('image',), values=(0,)):
+    def __init__(self, keys=('image',), values=(1,)):
         """
         :param keys: tuple of keys for addition
         :param values: tuple of values for addition
