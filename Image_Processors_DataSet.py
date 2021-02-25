@@ -677,23 +677,34 @@ class Add_Constant(ImageProcessor):
 
 
 class Resize_with_crop_pad(ImageProcessor):
-    def __init__(self, image_rows=512, image_cols=512):
+    def __init__(self, keys=('image', 'annotation'), image_rows=(512, 512), image_cols=(512, 512),
+                 is_mask=(False, True)):
+        """
+        :param keys: tuple of keys
+        :param image_rows: tuple of image rows
+        :param image_cols: tuple of image columns
+        :param is_mask: boolean for ensuring mask is correct
+        """
         print("Be careful.. this can severly slow down data retrieval, best to do these things while making the record")
-        self.image_rows = tf.constant(image_rows)
-        self.image_cols = tf.constant(image_cols)
+        self.keys = keys
+        self.is_mask = is_mask
+        self.image_rows = image_rows
+        self.image_cols = image_cols
 
     def parse(self, image_features, *args, **kwargs):
-        image_features['image'] = tf.image.resize_with_crop_or_pad(image_features['image'],
-                                                                   target_width=self.image_cols,
-                                                                   target_height=self.image_rows)
-        annotation = image_features['annotation']
-        annotation = tf.image.resize_with_crop_or_pad(annotation, target_width=self.image_cols,
-                                                      target_height=self.image_rows)
-        if annotation.shape[-1] != 1:
-            annotation = annotation[..., 1:]  # remove background
-            background = tf.expand_dims(1 - tf.reduce_sum(annotation, axis=-1), axis=-1)
-            annotation = tf.concat([background, annotation], axis=-1)
-        image_features['annotation'] = annotation
+        _check_keys_(input_features=image_features, keys=self.keys)
+        for key, image_rows, image_cols, is_mask in zip(self.keys, self.image_rows, self.image_cols, self.is_mask):
+            image_rows = tf.constant(image_rows)
+            image_cols = tf.constant(image_cols)
+            image_features[key] = tf.image.resize_with_crop_or_pad(image_features[key],
+                                                                   target_width=image_cols,
+                                                                   target_height=image_rows)
+            if is_mask and image_features[key].shape[-1] != 1:
+                array = image_features[key]
+                array = array[..., 1:]  # remove background
+                background = tf.expand_dims(1 - tf.reduce_sum(array, axis=-1), axis=-1)
+                array = tf.concat([background, array], axis=-1)
+                image_features[key] = array
         return image_features
 
 
