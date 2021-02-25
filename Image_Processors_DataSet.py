@@ -494,18 +494,18 @@ class Combined_Annotations(ImageProcessor):
 
 
 class Cast_Data(ImageProcessor):
-    def __init__(self, key_type_dict=None):
+    def __init__(self, keys=('image', 'annotation',), dtypes=('float16', 'float16')):
         """
-        :param key_type_dict: A dictionary of keys and datatypes wanted {'image':'float32'}
+        :param keys: tuple of keys
+        :param dtypes: tuple of datatypes
         """
-        assert key_type_dict is not None and type(key_type_dict) is dict, 'Need to provide a key_type_dict, something' \
-                                                                          ' like {"image":"float32"}'
-        self.key_type_dict = key_type_dict
+        self.keys = keys
+        self.dtypes = dtypes
 
     def parse(self, image_features, *args, **kwargs):
-        for key in self.key_type_dict:
-            if key in image_features:
-                image_features[key] = tf.cast(image_features[key], dtype=self.key_type_dict[key])
+        _check_keys_(input_features=image_features, keys=self.keys)
+        for key, dtype in zip(self.keys, self.dtypes):
+            image_features[key] = tf.cast(image_features[key], dtype=dtype)
         return image_features
 
 
