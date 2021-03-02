@@ -502,6 +502,21 @@ class Add_Images_And_Annotations(ImageProcessor):
         return input_features
 
 
+class NiftiToArray(ImageProcessor):
+    def __init__(self, nifti_keys=('image_path', 'annotation_path'), out_keys=('image', 'annotation'),
+                 dtypes=('float32', 'int8')):
+        self.nifti_keys, self.out_keys, self.dtypes = nifti_keys, out_keys, dtypes
+
+    def parse(self, input_features):
+        _check_keys_(input_features=input_features, keys=self.nifti_keys)
+        for nifti_key, out_key, dtype in zip(self.nifti_keys, self.out_keys, self.dtypes):
+            image_handle = input_features[nifti_key]
+            image_array = sitk.GetArrayFromImage(image_handle)
+            input_features[out_key] = image_array.astype(dtype=dtype)
+            input_features['{}_spacing'.format(out_key)] = np.asarray(image_handle.GetSpacing(), dtype='float32')
+        return input_features
+
+
 class Add_Dose(ImageProcessor):
     def parse(self, input_features):
         image_path = input_features['image_path']
