@@ -502,6 +502,18 @@ class Add_Images_And_Annotations(ImageProcessor):
         return input_features
 
 
+class AddNifti(ImageProcessor):
+    def __init__(self, nifti_path_keys=('image_path', 'annotation_path'), out_keys=('image', 'annotation')):
+        self.nifti_path_keys, self.out_keys = nifti_path_keys, out_keys
+
+    def parse(self, input_features):
+        _check_keys_(input_features=input_features, keys=self.nifti_path_keys)
+        for nifti_path_key, out_key in zip(self.nifti_path_keys, self.out_keys):
+            image_handle = sitk.ReadImage(input_features[nifti_path_key])
+            input_features[out_key] = image_handle
+        return input_features
+
+
 class NiftiToArray(ImageProcessor):
     def __init__(self, nifti_keys=('image_path', 'annotation_path'), out_keys=('image', 'annotation'),
                  dtypes=('float32', 'int8')):
