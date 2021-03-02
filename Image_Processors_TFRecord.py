@@ -803,6 +803,7 @@ class DistributeIntoRecurrenceCubes(ImageProcessor):
         secondary_array = input_features['secondary_image']
         secondary_deformed_array = input_features['secondary_image_deformed']
         primary_mask = input_features['primary_mask']
+        secondary_mask = input_features['secondary_mask']
         '''
         Now, find centroids in the cases
         '''
@@ -869,6 +870,7 @@ class DistributeIntoRecurrenceCubes(ImageProcessor):
                 index_mask = index_mask.astype('int')
                 index_mask = index_mask[z_start:z_stop, r_start:r_stop, c_start:c_stop]
                 primary_liver_cube = primary_mask[z_start:z_stop, r_start:r_stop, c_start:c_stop]
+                secondary_liver_cube = secondary_mask[z_start:z_stop, r_start:r_stop, c_start:c_stop]
                 pads = [[z_start_pad, z_stop_pad], [r_start_pad, r_stop_pad], [c_start_pad, c_stop_pad]]
                 if np.max(pads) > 0:
                     primary_cube = np.pad(primary_cube, pads, constant_values=np.min(primary_cube))
@@ -876,6 +878,7 @@ class DistributeIntoRecurrenceCubes(ImageProcessor):
                     secondary_deformed_cube = np.pad(secondary_deformed_cube, pads,
                                                      constant_values=np.min(secondary_deformed_cube))
                     primary_liver_cube = np.pad(primary_liver_cube, pads, constant_values=np.min(primary_liver_cube))
+                    secondary_liver_cube = np.pad(secondary_liver_cube, pads, constant_values=np.min(secondary_liver_cube))
                     index_mask = np.pad(index_mask, pads, constant_values=np.min(index_mask))
                 temp_feature['primary_image'] = primary_cube
                 temp_feature['secondary_image'] = secondary_cube
@@ -883,7 +886,9 @@ class DistributeIntoRecurrenceCubes(ImageProcessor):
                 primary_liver_cube[primary_liver_cube > 0] = 1  # Make it so we have liver at 1, and disease as 2
                 primary_liver_cube[index_mask == 1] = 2
                 primary_liver_cube = primary_liver_cube.astype('int8')
+                secondary_liver_cube = secondary_liver_cube.astype('int8')
                 temp_feature['primary_liver'] = primary_liver_cube
+                temp_feature['secondary_liver'] = secondary_liver_cube
                 temp_feature['annotation'] = to_categorical(value, 2)
                 wanted_keys = ('primary_image_path', 'file_name', 'spacing')
                 for key in wanted_keys:  # Bring along anything else we care about
