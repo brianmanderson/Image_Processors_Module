@@ -389,27 +389,44 @@ class Return_Lung(ImageProcessor):
 
 
 class MultiplyImagesByConstant(ImageProcessor):
-    def __init__(self, multiply_value=255.):
-        '''
-        :param multiply_value: Value to multiply array by
-        '''
-        self.multiply_value = tf.constant(multiply_value, dtype='float32')
+    def __init__(self, keys=('image',), values=(1,)):
+        """
+        :param keys: tuple of keys for addition
+        :param values: tuple of values for addition
+        """
+        self.keys = keys
+        self.values = values
 
     def parse(self, image_features, *args, **kwargs):
-        image_features['image'] = image_features['image'] * self.multiply_value
+        _check_keys_(input_features=image_features, keys=self.keys)
+        for key, value in zip(self.keys, self.values):
+            image_features[key] = tf.multiply(image_features[key], tf.cast(value, image_features[key].dtype))
         return image_features
 
 
-class AddConstantToImages(ImageProcessor):
-    def __init__(self, add_value=255.):
-        '''
-        :param add_value: Value to add array by
-        '''
-        self.add_value = tf.constant(add_value, dtype='float32')
+class Add_Constant(ImageProcessor):
+    def __init__(self, keys=('image',), values=(0,)):
+        """
+        :param keys: tuple of keys for addition
+        :param values: tuple of values for addition
+        """
+        self.keys = keys
+        self.values = values
 
     def parse(self, image_features, *args, **kwargs):
-        image_features['image'] = image_features['image'] + self.add_value
+        _check_keys_(input_features=image_features, keys=self.keys)
+        for key, value in zip(self.keys, self.values):
+            image_features[key] = tf.add(image_features[key], tf.cast(value, image_features[key].dtype))
         return image_features
+
+
+class AddConstantToImages(Add_Constant):
+    def __init__(self, keys=('image',), values=(0,)):
+        """
+        :param keys: tuple of keys for addition
+        :param values: tuple of values for addition
+        """
+        super().__init__(keys=keys, values=values)
 
 
 class V3Normalize(ImageProcessor):
@@ -425,17 +442,22 @@ class V3Normalize(ImageProcessor):
 
 
 class Normalize_Images(ImageProcessor):
-    def __init__(self, mean_val=0, std_val=1, image_key='image'):
-        '''
-        :param mean_val: Mean value to normalize to
-        :param std_val: Standard deviation value to normalize to
-        '''
-        self.mean_val, self.std_val = tf.constant(mean_val, dtype='float32'), tf.constant(std_val, dtype='float32')
-        self.image_key = image_key
+    def __init__(self, keys=('image',), mean_values=(0,), std_values=(1,),):
+        """
+        :param keys: tuple of image keys
+        :param mean_values: tuple of mean values
+        :param std_values: tuple of standard deviations
+        """
+        self.keys = keys
+        self.mean_values = mean_values
+        self.std_values = std_values
 
     def parse(self, image_features, *args, **kwargs):
-        _check_keys_(image_features, self.image_key)
-        image_features[self.image_key] = (image_features[self.image_key] - self.mean_val) / self.std_val
+        _check_keys_(image_features, self.keys)
+        for key, mean_val, std_val in zip(self.keys, self.mean_values, self.std_values):
+            mean_val = tf.constant(mean_val, dtype=image_features[key].dtype)
+            std_val = tf.constant(std_val, dtype=image_features[key].dtype)
+            image_features[key] = (image_features[key] - mean_val) / std_val
         return image_features
 
 
@@ -494,18 +516,18 @@ class Combined_Annotations(ImageProcessor):
 
 
 class Cast_Data(ImageProcessor):
-    def __init__(self, key_type_dict=None):
+    def __init__(self, keys=('image', 'annotation',), dtypes=('float16', 'float16')):
         """
-        :param key_type_dict: A dictionary of keys and datatypes wanted {'image':'float32'}
+        :param keys: tuple of keys
+        :param dtypes: tuple of datatypes
         """
-        assert key_type_dict is not None and type(key_type_dict) is dict, 'Need to provide a key_type_dict, something' \
-                                                                          ' like {"image":"float32"}'
-        self.key_type_dict = key_type_dict
+        self.keys = keys
+        self.dtypes = dtypes
 
     def parse(self, image_features, *args, **kwargs):
-        for key in self.key_type_dict:
-            if key in image_features:
-                image_features[key] = tf.cast(image_features[key], dtype=self.key_type_dict[key])
+        _check_keys_(input_features=image_features, keys=self.keys)
+        for key, dtype in zip(self.keys, self.dtypes):
+            image_features[key] = tf.cast(image_features[key], dtype=dtype)
         return image_features
 
 
@@ -635,56 +657,60 @@ class Flip_Images(ImageProcessor):
 
 
 class Threshold_Images(ImageProcessor):
-    def __init__(self, lower_bound=-np.inf, upper_bound=np.inf, divide=True):
-        '''
-        :param lower_bound: Lower bound to threshold images, normally -3.55 if Normalize_Images is used previously
-        :param upper_bound: Upper bound to threshold images, normally 3.55 if Normalize_Images is used previously
-        '''
-        self.lower = tf.constant(lower_bound, dtype='float32')
-        self.upper = tf.constant(upper_bound, dtype='float32')
-        self.divide = divide
+    def __init__(self, keys=('image',), lower_bounds=(-np.inf,), upper_bounds=(np.inf,), divides=(True,)):
+        """
+        :param keys: tuple of image keys
+        :param lower_bounds: tuple of bounds
+        :param upper_bounds: tuple of bounds
+        :param divides: boolean if you want to divide
+        """
+        self.lower_bounds = lower_bounds
+        self.upper_bounds = upper_bounds
+        self.keys = keys
+        self.divides = divides
 
     def parse(self, image_features, *args, **kwargs):
-        image_features['image'] = tf.where(
-            image_features['image'] > tf.cast(self.upper, dtype=image_features['image'].dtype),
-            tf.cast(self.upper, dtype=image_features['image'].dtype), image_features['image'])
-        image_features['image'] = tf.where(
-            image_features['image'] < tf.cast(self.lower, dtype=image_features['image'].dtype),
-            tf.cast(self.lower, dtype=image_features['image'].dtype), image_features['image'])
-        if self.divide:
-            image_features['image'] = tf.divide(image_features['image'], tf.cast(tf.subtract(self.upper, self.lower),
-                                                                                 dtype=image_features['image'].dtype))
-        return image_features
-
-
-class Add_Constant(ImageProcessor):
-    def __init__(self, value):
-        self.value = tf.constant(value)
-
-    def parse(self, image_features, *args, **kwargs):
-        i = image_features['image']
-        image_features['image'] = tf.add(i, tf.cast(self.value, i.dtype))
+        _check_keys_(image_features, self.keys)
+        for key, lower_bound, upper_bound, divide in zip(self.keys, self.lower_bounds, self.upper_bounds, self.divides):
+            image_features[key] = tf.where(image_features[key] > tf.cast(upper_bound, dtype=image_features[key].dtype),
+                                           tf.cast(upper_bound, dtype=image_features[key].dtype), image_features[key])
+            image_features[key] = tf.where(image_features[key] < tf.cast(lower_bound, dtype=image_features[key].dtype),
+                                           tf.cast(lower_bound, dtype=image_features[key].dtype), image_features[key])
+            if divide:
+                image_features[key] = tf.divide(image_features[key], tf.cast(tf.subtract(upper_bound, lower_bound),
+                                                                             dtype=image_features[key].dtype))
         return image_features
 
 
 class Resize_with_crop_pad(ImageProcessor):
-    def __init__(self, image_rows=512, image_cols=512):
+    def __init__(self, keys=('image', 'annotation'), image_rows=(512, 512), image_cols=(512, 512),
+                 is_mask=(False, True)):
+        """
+        :param keys: tuple of keys
+        :param image_rows: tuple of image rows
+        :param image_cols: tuple of image columns
+        :param is_mask: boolean for ensuring mask is correct
+        """
         print("Be careful.. this can severly slow down data retrieval, best to do these things while making the record")
-        self.image_rows = tf.constant(image_rows)
-        self.image_cols = tf.constant(image_cols)
+        self.keys = keys
+        self.is_mask = is_mask
+        self.image_rows = image_rows
+        self.image_cols = image_cols
 
     def parse(self, image_features, *args, **kwargs):
-        image_features['image'] = tf.image.resize_with_crop_or_pad(image_features['image'],
-                                                                   target_width=self.image_cols,
-                                                                   target_height=self.image_rows)
-        annotation = image_features['annotation']
-        annotation = tf.image.resize_with_crop_or_pad(annotation, target_width=self.image_cols,
-                                                      target_height=self.image_rows)
-        if annotation.shape[-1] != 1:
-            annotation = annotation[..., 1:]  # remove background
-            background = tf.expand_dims(1 - tf.reduce_sum(annotation, axis=-1), axis=-1)
-            annotation = tf.concat([background, annotation], axis=-1)
-        image_features['annotation'] = annotation
+        _check_keys_(input_features=image_features, keys=self.keys)
+        for key, image_rows, image_cols, is_mask in zip(self.keys, self.image_rows, self.image_cols, self.is_mask):
+            image_rows = tf.constant(image_rows)
+            image_cols = tf.constant(image_cols)
+            image_features[key] = tf.image.resize_with_crop_or_pad(image_features[key],
+                                                                   target_width=image_cols,
+                                                                   target_height=image_rows)
+            if is_mask and image_features[key].shape[-1] != 1:
+                array = image_features[key]
+                array = array[..., 1:]  # remove background
+                background = tf.expand_dims(1 - tf.reduce_sum(array, axis=-1), axis=-1)
+                array = tf.concat([background, array], axis=-1)
+                image_features[key] = array
         return image_features
 
 
