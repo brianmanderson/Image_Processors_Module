@@ -515,6 +515,15 @@ class Combined_Annotations(ImageProcessor):
         return image_features
 
 
+class CreateDiseaseKey(ImageProcessor):
+    def parse(self, image_features, *args, **kwargs):
+        value = tf.constant(1, dtype=image_features['primary_liver'].dtype)
+        image_features['disease'] = tf.where(image_features['primary_liver'] > value,
+                                             value,
+                                             tf.constant(0, dtype=image_features['primary_liver'].dtype))
+        return image_features
+
+
 class Cast_Data(ImageProcessor):
     def __init__(self, keys=('image', 'annotation',), dtypes=('float16', 'float16')):
         """
