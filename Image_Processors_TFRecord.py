@@ -514,6 +514,17 @@ class AddNifti(ImageProcessor):
         return input_features
 
 
+class DeleteKeys(ImageProcessor):
+    def __init__(self, keys_to_delete=('primary_image_nifti',)):
+        self.keys_to_delete = keys_to_delete
+
+    def parse(self, input_features):
+        _check_keys_(input_features=input_features, keys=self.keys_to_delete)
+        for key in self.keys_to_delete:
+            del input_features[key]
+        return input_features
+
+
 class NiftiToArray(ImageProcessor):
     def __init__(self, nifti_keys=('image_path', 'annotation_path'), out_keys=('image', 'annotation'),
                  dtypes=('float32', 'int8')):
