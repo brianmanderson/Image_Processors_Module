@@ -405,7 +405,7 @@ class Resample_LiTs(ImageProcessor):
 
 class Resampler(ImageProcessor):
     def __init__(self, resample_keys=('image', 'annotation'), resample_interpolators=('Linear', 'Nearest'),
-                 desired_output_spacing=(None, None, None), make_512=False):
+                 desired_output_spacing=(None, None, None), make_512=False, verbose=True):
         """
         :param resample_keys: tuple of keys in input_features to resample
         :param resample_interpolators: tuple of SimpleITK interpolators, 'Linear' or 'Nearest'
@@ -416,6 +416,7 @@ class Resampler(ImageProcessor):
         self.resample_keys = resample_keys
         self.resample_interpolators = resample_interpolators
         self.make_512 = make_512
+        self.verbose = verbose
 
     def parse(self, input_features):
         resampler = ImageResampler()
@@ -449,7 +450,8 @@ class Resampler(ImageProcessor):
                     output_spacing.append(self.desired_output_spacing[index])
             output_spacing = tuple(output_spacing)
             if output_spacing != input_spacing:
-                print('Resampling {} to {}'.format(input_spacing, output_spacing))
+                if self.verbose:
+                    print('Resampling {} to {}'.format(input_spacing, output_spacing))
                 if image_array is None:
                     image_array = sitk.GetArrayFromImage(image_handle)
                 if len(image_array.shape) == 3:
