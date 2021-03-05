@@ -90,7 +90,7 @@ def return_example_proto(base_dictionary, image_dictionary_for_pickle=None, data
                 if '{}_size_{}'.format(key, index) not in base_dictionary:
                     feature['{}_size_{}'.format(key, index)] = _int64_feature(tf.constant(shape_value, dtype='int64'))
                     image_dictionary_for_pickle['{}_size_{}'.format(key, index)] = tf.io.FixedLenFeature([], tf.int64)
-            feature[key] = _bytes_feature(data.tobytes())
+            feature[key] = _bytes_feature(data.tostring())
             if key not in image_dictionary_for_pickle:
                 image_dictionary_for_pickle[key] = tf.io.FixedLenFeature([], tf.string)
                 data_type_dictionary[key] = data.dtype
