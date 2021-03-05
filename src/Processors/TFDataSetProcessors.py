@@ -1,6 +1,10 @@
 __author__ = 'Brian M Anderson'
+# Created on 3/5/2021
 
-# Created on 4/8/2020
+import sys
+import os.path
+sys.path.append(
+    os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
 import tensorflow as tf
 import numpy as np
 from tensorflow.python.framework import tensor_shape
@@ -9,7 +13,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.framework import ops
-from .Plot_And_Scroll_Images.Plot_Scroll_Images import plot_scroll_Image, plt
+from Plot_And_Scroll_Images.Plot_Scroll_Images import plot_scroll_Image, plt
 
 
 def _check_keys_(input_features, keys):

@@ -1,11 +1,18 @@
+__author__ = 'Brian M Anderson'
+# Created on 3/5/2021
+
+import sys
+import os.path
+sys.path.append(
+    os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
 import numpy as np
 from scipy.ndimage import interpolation, filters
 from tensorflow.python.keras.utils.np_utils import to_categorical
 import cv2, math, copy, os, sys
 from skimage.measure import block_reduce
-from .Fill_In_Segments_sitk import Fill_Missing_Segments
-from .Resample_Class.src.NiftiResampler.ResampleTools import Resample_Class_Object, sitk
-from .Plot_And_Scroll_Images.Plot_Scroll_Images import plot_scroll_Image, plt
+from Fill_In_Segments_sitk import Fill_Missing_Segments
+from Resample_Class.src.NiftiResampler.ResampleTools import Resample_Class_Object, sitk
+from Plot_And_Scroll_Images.Plot_Scroll_Images import plot_scroll_Image, plt
 '''
 Description of code
 Annotations_To_Categorical(num_classes): classes for annotations to be turned into

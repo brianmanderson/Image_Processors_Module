@@ -1,15 +1,19 @@
 __author__ = 'Brian M Anderson'
+# Created on 3/5/2021
 
-# Created on 4/28/2020
+import sys
+import os.path
+sys.path.append(
+    os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
 import SimpleITK as sitk
 import numpy as np
 from _collections import OrderedDict
-from .Resample_Class.src.NiftiResampler.ResampleTools import ImageResampler
+from Resample_Class.src.NiftiResampler.ResampleTools import ImageResampler
 from scipy.ndimage.filters import gaussian_filter
 import tensorflow as tf
 import os, pickle
 from math import ceil, floor
-from .Plot_And_Scroll_Images.Plot_Scroll_Images import plot_scroll_Image, plt
+from Plot_And_Scroll_Images.Plot_Scroll_Images import plot_scroll_Image, plt
 
 
 class ImageProcessor(object):
