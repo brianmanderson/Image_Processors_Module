@@ -501,6 +501,43 @@ class CombineAnnotations(ImageProcessor):
         return image_features
 
 
+class MaskOneBasedOnOther(ImageProcessor):
+    def __init__(self, guiding_keys=('annotation',), changing_keys=('image',), guiding_values=(1,), mask_values=(-1,),
+                 methods=('equal_to',)):
+        """
+        :param guiding_keys: keys which will guide the masking of another key
+        :param changing_keys: keys which will be masked
+        :param guiding_values: values which will define the mask
+        :param mask_values: values which will be changed
+        :param methods: method of masking, 'equal_to', 'less_than', 'greater_than'
+        """
+        self.guiding_keys, self.changing_keys = guiding_keys, changing_keys
+        self.guiding_values, self.mask_values = guiding_values, mask_values
+        for method in methods:
+            assert method in ('equal_to', 'less_than', 'greater_than'), 'Only provide a method of equal_to, ' \
+                                                                        'less_than, or greater_than'
+        self.methods = methods
+
+    def parse(self, input_features, *args, **kwargs):
+        _check_keys_(input_features=input_features, keys=self.guiding_keys)
+        _check_keys_(input_features=input_features, keys=self.changing_keys)
+        for guiding_key, changing_key, guiding_value, mask_value, method in zip(self.guiding_keys, self.changing_keys,
+                                                                                self.guiding_values, self.mask_values,
+                                                                                self.methods):
+            mask_value = tf.constant(mask_value, dtype=input_features[changing_key].dtype)
+            guiding_value = tf.constant(guiding_value, dtype=input_features[guiding_key].dtype)
+            if method == 'equal_to':
+                input_features[changing_key] = tf.where(input_features[guiding_key] == guiding_value,
+                                                        mask_value, input_features[changing_key])
+            elif method == 'less_than':
+                input_features[changing_key] = tf.where(input_features[guiding_key] < guiding_value,
+                                                        mask_value, input_features[changing_key])
+            elif method == 'greater_than':
+                input_features[changing_key] = tf.where(input_features[guiding_key] > guiding_value,
+                                                        mask_value, input_features[changing_key])
+        return input_features
+
+
 class MaskKeys(CombineAnnotations):
     def __init__(self, key_tuple=('annotation',), from_values_tuple=(2,), to_values_tuple=(1,)):
         super().__init__(key_tuple=key_tuple, from_values_tuple=from_values_tuple, to_values_tuple=to_values_tuple)
