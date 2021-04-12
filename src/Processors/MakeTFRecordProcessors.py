@@ -191,7 +191,7 @@ def get_features(features, image_processors=None, verbose=0, record_writer=None)
             if verbose:
                 print(image_processor)
             for key in features.keys():
-                features[key] = image_processor.parse(features[key])
+                features[key] = image_processor.pre_process(features[key])
         features, _ = down_dictionary(features, OrderedDict(), 0)
     if record_writer is not None:
         record_writer.write_records(features)
