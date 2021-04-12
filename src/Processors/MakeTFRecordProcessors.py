@@ -191,7 +191,7 @@ def get_features(features, image_processors=None, verbose=0, record_writer=None)
             if verbose:
                 print(image_processor)
             for key in features.keys():
-                features[key] = image_processor.parse(features[key])
+                features[key] = image_processor.pre_process(features[key])
         features, _ = down_dictionary(features, OrderedDict(), 0)
     if record_writer is not None:
         record_writer.write_records(features)
@@ -478,6 +478,31 @@ class Resampler(ImageProcessor):
                     input_features[key] = stacked
                     input_features['{}_spacing'.format(key)] = np.asarray(self.desired_output_spacing, dtype='float32')
         input_features['spacing'] = np.asarray(self.desired_output_spacing, dtype='float32')
+        return input_features
+
+
+class CastHandle(ImageProcessor):
+    def __init__(self, image_handle_keys, d_type_keys):
+        """
+        :param image_handle_keys: tuple of image handle keys ('primary_handle', )
+        :param d_type_keys: tuple of dtype keys ('float32', )
+        """
+        self.image_handle_keys = image_handle_keys
+        self.d_type_keys = d_type_keys
+
+    def parse(self, input_features):
+        _check_keys_(input_features=input_features, keys=self.image_handle_keys)
+        for key, dtype in zip(self.image_handle_keys, self.d_type_keys):
+            if dtype.find('float') != -1:
+                dtype = sitk.sitkFloat32
+            elif dtype == 'int16':
+                dtype = sitk.sitkInt16
+            elif dtype == 'int32':
+                dtype = sitk.sitkInt32
+            else:
+                dtype = None
+            assert dtype is not None, 'Need to provide a dtype to cast of float, int16, or int32'
+            input_features[key] = sitk.Cast(input_features[key], dtype)
         return input_features
 
 
