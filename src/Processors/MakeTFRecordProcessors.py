@@ -558,6 +558,100 @@ class CombineKeys(ImageProcessor):
         return input_features
 
 
+def image_resize(image, width=None, height=None, inter=cv2.INTER_AREA):
+    # initialize the dimensions of the image to be resized and
+    # grab the image size
+    dim = None
+    (h, w) = image.shape[:2]
+
+    # if both the width and height are None, then return the
+    # original image
+    if width is None and height is None:
+        return image
+
+    # check to see if the width is None
+    if height is not None:
+        # calculate the ratio of the height and construct the
+        # dimensions
+        r = height / float(h)
+        dim = (int(w * r), height)
+
+    # otherwise, the height is None
+    if width is not None:
+        # calculate the ratio of the width and construct the
+        # dimensions
+        r = width / float(w)
+        if dim is None:
+            dim = (width, int(h * r))
+        else:
+            dim = min([dim, (width, int(h * r))])
+
+    # resize the image
+    resized = cv2.resize(image, dim, interpolation=inter)
+
+    # return the resized image
+    return resized
+
+
+class Ensure_Image_Proportions(ImageProcessor):
+    def __init__(self, image_rows=512, image_cols=512, image_keys=('image',), post_process_keys=('image', 'prediction')):
+        self.wanted_rows = image_rows
+        self.wanted_cols = image_cols
+        self.image_keys = image_keys
+        self.post_process_keys = post_process_keys
+
+    def pre_process(self, input_features):
+        _check_keys_(input_features=input_features, keys=self.image_keys)
+        for key in self.image_keys:
+            images = input_features[key]
+            og_image_size = np.squeeze(images.shape)
+            if len(og_image_size) == 4:
+                self.og_rows, self.og_cols = og_image_size[-3], og_image_size[-2]
+            else:
+                self.og_rows, self.og_cols = og_image_size[-2], og_image_size[-1]
+            self.resize = False
+            self.pad = False
+            if self.og_rows != self.wanted_rows or self.og_cols != self.wanted_cols:
+                self.resize = True
+                if str(images.dtype).find('int') != -1:
+                    out_dtype = 'int'
+                else:
+                    out_dtype = images.dtype
+                images = [image_resize(i, self.wanted_rows, self.wanted_cols, inter=cv2.INTER_LINEAR)[None, ...] for i in
+                          images.astype('float32')]
+                images = np.concatenate(images, axis=0).astype(out_dtype)
+                print('Resizing {} to {}'.format(self.og_rows, images.shape[1]))
+                self.pre_pad_rows, self.pre_pad_cols = images.shape[1], images.shape[2]
+                if self.wanted_rows != self.pre_pad_rows or self.wanted_cols != self.pre_pad_cols:
+                    print('Padding {} to {}'.format(self.pre_pad_rows, self.wanted_rows))
+                    self.pad = True
+                    images = [np.resize(i, new_shape=(self.wanted_rows, self.wanted_cols, images.shape[-1]))[None, ...] for
+                              i in images]
+                    images = np.concatenate(images, axis=0)
+            input_features[key] = images
+        return input_features
+
+    def post_process(self, input_features):
+        if not self.pad and not self.resize:
+            return input_features
+        _check_keys_(input_features=input_features, keys=self.post_process_keys)
+        for key in self.post_process_keys:
+            pred = input_features[key]
+            if str(pred.dtype).find('int') != -1:
+                out_dtype = 'int'
+            else:
+                out_dtype = images.dtype
+            pred = pred.astype('float32')
+            if self.pad:
+                pred = [np.resize(i, new_shape=(self.pre_pad_rows, self.pre_pad_cols, pred.shape[-1])) for i in pred]
+                pred = np.concatenate(pred, axis=0)
+            if self.resize:
+                pred = [image_resize(i, self.og_rows, self.og_cols, inter=cv2.INTER_LINEAR)[None, ...] for i in pred]
+                pred = np.concatenate(pred, axis=0)
+            input_features[key] = pred.astype(out_dtype)
+        return input_features
+
+
 class ExpandDimensions(ImageProcessor):
     def __init__(self, axis=-1, image_keys=('image', 'annotation')):
         self.axis = axis
@@ -1276,7 +1370,7 @@ class DivideByValues(ImageProcessor):
 class Threshold_Images(ImageProcessor):
     def __init__(self, image_keys=('image',), lower_bound=-np.inf, upper_bound=np.inf, divide=True):
         """
-        :param image_key: key for images in the image_features dictionary
+        :param image_keys: tuple key for images in the image_features dictionary
         :param lower_bound: Lower bound to threshold images, normally -3.55 if Normalize_Images is used previously
         :param upper_bound: Upper bound to threshold images, normally 3.55 if Normalize_Images is used previously
         """
