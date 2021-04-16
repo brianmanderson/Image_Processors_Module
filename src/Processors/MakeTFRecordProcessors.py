@@ -11,8 +11,12 @@ from _collections import OrderedDict
 from Resample_Class.src.NiftiResampler.ResampleTools import ImageResampler
 from scipy.ndimage.filters import gaussian_filter
 import tensorflow as tf
-import os, pickle
+import os
+import pickle
+import copy
 from math import ceil, floor
+import cv2
+from skimage import morphology
 from Plot_And_Scroll_Images.Plot_Scroll_Images import plot_scroll_Image, plt
 
 
@@ -1965,6 +1969,67 @@ class Fill_Binary_Holes(ImageProcessor):
         return input_features
 
 
+class MinimumVolumeandAreaPrediction(ImageProcessor):
+    '''
+    This should come after prediction thresholding
+    '''
+
+    def __init__(self, min_volume=0.0, min_area=0.0, max_area=np.inf, pred_axis=[1], prediction_key='prediction',
+                 dicom_handle_key='primary_handle'):
+        '''
+        :param min_volume: Minimum volume of structure allowed, in cm3
+        :param min_area: Minimum area of structure allowed, in cm2
+        :param max_area: Max area of structure allowed, in cm2
+        :return: Masked annotation
+        '''
+        self.min_volume = min_volume * 1000  # cm3 to mm3
+        self.min_area = min_area * 100
+        self.max_area = max_area * 100
+        self.pred_axis = pred_axis
+        self.Connected_Component_Filter = sitk.ConnectedComponentImageFilter()
+        self.RelabelComponent = sitk.RelabelComponentImageFilter()
+        self.prediction_key = prediction_key
+        self.dicom_handle_key = dicom_handle_key
+
+    def post_process(self, input_features):
+        pred = input_features[self.prediction_key]
+        dicom_handle = input_features[self.dicom_handle_key]
+        for axis in self.pred_axis:
+            temp_pred = pred[..., axis]
+            if self.min_volume != 0:
+                label_image = self.Connected_Component_Filter.Execute(sitk.GetImageFromArray(temp_pred) > 0)
+                self.RelabelComponent.SetMinimumObjectSize(
+                    int(self.min_volume / np.prod(dicom_handle.GetSpacing())))
+                label_image = self.RelabelComponent.Execute(label_image)
+                temp_pred = sitk.GetArrayFromImage(label_image > 0)
+            if self.min_area != 0 or self.max_area != np.inf:
+                slice_indexes = np.where(np.sum(temp_pred, axis=(1, 2)) > 0)
+                if slice_indexes:
+                    slice_spacing = np.prod(dicom_handle.GetSpacing()[:-1])
+                    for slice_index in slice_indexes[0]:
+                        labels = morphology.label(temp_pred[slice_index], connectivity=1)
+                        for i in range(1, labels.max() + 1):
+                            new_area = labels[labels == i].shape[0]
+                            temp_area = slice_spacing * new_area
+                            if temp_area > self.max_area:
+                                labels[labels == i] = 0
+                                continue
+                            elif temp_area < self.min_area:
+                                labels[labels == i] = 0
+                                continue
+                        labels[labels > 0] = 1
+                        temp_pred[slice_index] = labels
+            if self.min_volume != 0:
+                label_image = self.Connected_Component_Filter.Execute(sitk.GetImageFromArray(temp_pred) > 0)
+                self.RelabelComponent.SetMinimumObjectSize(
+                    int(self.min_volume / np.prod(dicom_handle.GetSpacing())))
+                label_image = self.RelabelComponent.Execute(label_image)
+                temp_pred = sitk.GetArrayFromImage(label_image > 0)
+            pred[..., axis] = temp_pred
+        input_features[self.prediction_key] = pred
+        return input_features
+
+
 class Threshold_and_Expand(ImageProcessor):
     def __init__(self, seed_threshold_value=None, lower_threshold_value=None, prediction_key='pred'):
         self.seed_threshold_value = seed_threshold_value
@@ -2009,7 +2074,7 @@ class Threshold_and_Expand(ImageProcessor):
 
 
 class Threshold_Images(ImageProcessor):
-    def __init__(self, image_keys=('image',), lower_bound=-np.inf, upper_bound=np.inf, divide=True):
+    def __init__(self, image_keys=('image',), lower_bound=-np.inf, upper_bound=np.inf, divide=False):
         """
         :param image_keys: tuple key for images in the image_features dictionary
         :param lower_bound: Lower bound to threshold images, normally -3.55 if Normalize_Images is used previously
@@ -2251,6 +2316,7 @@ class PadImages(ImageProcessor):
             elif len(pred.shape) == 5:
                 pred = pred[:, self.pad[0][0]:, self.pad[1][0]:, self.pad[2][0]:]
                 pred = pred[:, :self.og_shape[0], :self.og_shape[1], :self.og_shape[2]]
+            input_features[key] = pred
         return input_features
 
 
