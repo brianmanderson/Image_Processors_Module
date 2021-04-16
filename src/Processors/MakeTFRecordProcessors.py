@@ -381,6 +381,26 @@ class To_Categorical(ImageProcessor):
         return input_features
 
 
+class SmoothingPredictionRecursiveGaussian(ImageProcessor):
+    def __init__(self, sigma=(0.1, 0.1, 0.0001), pred_axis=[1], prediction_key='prediction'):
+        self.sigma = sigma
+        self.pred_axis = pred_axis
+        self.prediction_key = prediction_key
+
+    def smooth(self, handle):
+        return sitk.BinaryThreshold(sitk.SmoothingRecursiveGaussian(handle), lowerThreshold=.01, upperThreshold=np.inf)
+
+    def post_process(self, input_features):
+        pred = input_features[self.prediction_key]
+        for axis in self.pred_axis:
+            k = sitk.GetImageFromArray(pred[..., axis])
+            k.SetSpacing(self.dicom_handle.GetSpacing())
+            k = self.smooth(k)
+            pred[..., axis] = sitk.GetArrayFromImage(k)
+        input_features[self.prediction_key] = pred
+        return input_features
+
+
 class Iterate_Overlap(ImageProcessor):
     def __init__(self, on_liver_lobes=True, max_iterations=10, prediction_key='pred', ground_truth_key='annotations',
                  dicom_handle_key='primary_handle'):
@@ -503,6 +523,7 @@ class Iterate_Overlap(ImageProcessor):
     def post_process(self, input_features):
         pred = input_features[self.prediction_key]
         ground_truth = input_features[self.ground_truth_key]
+        self.dicom_handle = input_features[self.dicom_handle_key]
         pred = self.iterate_annotations(pred, ground_truth, spacing=list(self.dicom_handle.GetSpacing()), z_mult=1)
         input_features[self.prediction_key] = pred
         return input_features
@@ -746,6 +767,7 @@ class ArgMax(ImageProcessor):
             pred = np.argmax(pred, axis=-1)
             input_features[key] = pred
             pred = to_categorical(pred, out_classes)
+            input_features[key] = pred
         return input_features
 
 
@@ -1536,6 +1558,210 @@ class DistributeIntoCubes(ImageProcessor):
                         [0, og_image_size[2] - image.shape[2]]]
                 image = np.pad(image, pads, constant_values=np.min(image))
                 input_features[key] = image
+        return input_features
+
+
+def get_bounding_box_indexes(annotation, bbox=(0,0,0)):
+    '''
+    :param annotation: A binary image of shape [# images, # rows, # cols, channels]
+    :return: the min and max z, row, and column numbers bounding the image
+    '''
+    annotation = np.squeeze(annotation)
+    if annotation.dtype != 'int':
+        annotation[annotation>0.1] = 1
+        annotation = annotation.astype('int')
+    indexes = np.where(np.any(annotation, axis=(1, 2)) == True)[0]
+    min_z_s, max_z_s = indexes[0], indexes[-1]
+    min_z_s = max([0, min_z_s - bbox[0]])
+    max_z_s = min([annotation.shape[0], max_z_s + bbox[0]])
+    '''
+    Get the row values of primary and secondary
+    '''
+    indexes = np.where(np.any(annotation, axis=(0, 2)) == True)[0]
+    min_r_s, max_r_s = indexes[0], indexes[-1]
+    min_r_s = max([0, min_r_s - bbox[1]])
+    max_r_s = min([annotation.shape[1], max_r_s + bbox[1]])
+    '''
+    Get the col values of primary and secondary
+    '''
+    indexes = np.where(np.any(annotation, axis=(0, 1)) == True)[0]
+    min_c_s, max_c_s = indexes[0], indexes[-1]
+    min_c_s = max([0, min_c_s - bbox[2]])
+    max_c_s = min([annotation.shape[2], max_c_s + bbox[2]])
+    return min_z_s, max_z_s, min_r_s, max_r_s, min_c_s, max_c_s
+
+
+class Iterate_Lobe_Annotations(object):
+    def __init__(self):
+        self.remove_smallest = Remove_Smallest_Structures()
+        MauererDistanceMap = sitk.SignedMaurerDistanceMapImageFilter()
+        MauererDistanceMap.SetInsideIsPositive(True)
+        MauererDistanceMap.UseImageSpacingOn()
+        MauererDistanceMap.SquaredDistanceOff()
+        self.BinaryfillFilter = sitk.BinaryFillholeImageFilter()
+        self.BinaryfillFilter.SetFullyConnected(True)
+        self.BinaryfillFilter = sitk.BinaryMorphologicalClosingImageFilter()
+        self.BinaryfillFilter.SetKernelRadius((3, 3, 1))
+        self.BinaryfillFilter.SetKernelType(sitk.sitkBall)
+        self.MauererDistanceMap = MauererDistanceMap
+
+    def remove_56_78(self, annotations):
+        amounts = np.sum(annotations, axis=(1, 2))
+        indexes = np.where((np.max(amounts[:, (5, 6)], axis=-1) > 0) & (np.max(amounts[:, (7, 8)], axis=-1) > 0))
+        if indexes:
+            indexes = indexes[0]
+            for i in indexes:
+                if amounts[i, 5] < amounts[i, 8]:
+                    annotations[i, ..., 8] += annotations[i, ..., 5]
+                    annotations[i, ..., 5] = 0
+                else:
+                    annotations[i, ..., 5] += annotations[i, ..., 8]
+                    annotations[i, ..., 8] = 0
+                if amounts[i, 6] < amounts[i, 7]:
+                    annotations[i, ..., 7] += annotations[i, ..., 6]
+                    annotations[i, ..., 6] = 0
+                else:
+                    annotations[i, ..., 6] += annotations[i, ..., 7]
+                    annotations[i, ..., 7] = 0
+        return annotations
+
+    def iterate_annotations(self, annotations_base, ground_truth_base, spacing, allowed_differences=50,
+                            max_iteration=15, reduce2D=True):
+        '''
+        :param annotations:
+        :param ground_truth:
+        :param spacing:
+        :param allowed_differences:
+        :param max_iteration:
+        :param z_mult: factor by which to ensure slices don't bleed into ones above and below
+        :return:
+        '''
+        differences = [np.inf]
+        index = 0
+        liver = np.squeeze(ground_truth_base)
+        min_z_s, max_z_s, min_r_s, max_r_s, min_c_s, max_c_s = get_bounding_box_indexes(liver)
+        annotations = annotations_base[min_z_s:max_z_s, min_r_s:max_r_s, min_c_s:max_c_s]
+        ground_truth = ground_truth_base[min_z_s:max_z_s, min_r_s:max_r_s, min_c_s:max_c_s]
+        while differences[-1] > allowed_differences and index < max_iteration:
+            previous_iteration = copy.deepcopy(np.argmax(annotations, axis=-1))
+            for i in range(1, annotations.shape[-1]):
+                annotation = annotations[..., i]
+                if reduce2D:
+                    # start = time.time()
+                    slices = np.where(np.max(annotation, axis=(1, 2)) > 0)
+                    for slice in slices[0]:
+                        annotation[slice] = sitk.GetArrayFromImage(self.remove_smallest.remove_smallest_component(
+                            sitk.GetImageFromArray(annotation[slice].astype('float32')) > 0))
+                    # print('Took {} seconds'.format(time.time()-start))
+                # start = time.time()
+                annotations[..., i] = sitk.GetArrayFromImage(self.remove_smallest.remove_smallest_component(
+                    sitk.GetImageFromArray(annotation.astype('float32')) > 0))
+                # print('Took {} seconds'.format(time.time() - start))
+            # annotations = self.remove_56_78(annotations)
+            summed = np.sum(annotations, axis=-1)
+            annotations[summed > 1] = 0
+            annotations[annotations > 0] = 1
+            annotations[..., 0] = 1 - ground_truth
+            # start = time.time()
+            annotations = self.make_distance_map(annotations, ground_truth, spacing=spacing)
+            differences.append(np.abs(
+                np.sum(previous_iteration[ground_truth == 1] - np.argmax(annotations, axis=-1)[ground_truth == 1])))
+            index += 1
+        annotations_base[min_z_s:max_z_s, min_r_s:max_r_s, min_c_s:max_c_s] = annotations
+        annotations_base[..., 0] = 1 - ground_truth_base
+        return annotations_base
+
+    def run_distance_map(self, array, spacing):
+        image = sitk.GetImageFromArray(array)
+        image.SetSpacing(spacing)
+        output = self.MauererDistanceMap.Execute(image)
+        output = sitk.GetArrayFromImage(output)
+        return output
+
+    def make_distance_map(self, pred, liver, spacing=(0.975, 0.975, 2.5)):
+        '''
+        :param pred: A mask of your predictions with N channels on the end, N=0 is background [# Images, 512, 512, N]
+        :param liver: A mask of the desired region [# Images, 512, 512]
+        :param reduce: Save time and only work on masked region
+        :return:
+        '''
+        liver = np.squeeze(liver)
+        pred = np.squeeze(pred)
+        pred = np.round(pred).astype('int')
+        min_z, min_r, min_c = 0, 0, 0
+        max_z, max_r, max_c = pred.shape[:3]
+        reduced_pred = pred[min_z:max_z, min_r:max_r, min_c:max_c]
+        reduced_liver = liver[min_z:max_z, min_r:max_r, min_c:max_c]
+        reduced_output = np.zeros(reduced_pred.shape)
+        for i in range(1, pred.shape[-1]):
+            temp_reduce = reduced_pred[..., i]
+            output = self.run_distance_map(temp_reduce, spacing)
+            reduced_output[..., i] = output
+        reduced_output[reduced_output > 0] = 0
+        reduced_output = np.abs(reduced_output)
+        reduced_output[..., 0] = np.inf
+        output = np.zeros(reduced_output.shape, dtype='int')
+        mask = reduced_liver == 1
+        values = reduced_output[mask]
+        output[mask, np.argmin(values, axis=-1)] = 1
+        pred[min_z:max_z, min_r:max_r, min_c:max_c] = output
+        return pred
+
+
+def createthreshold(predictionimage, seeds, thresholdvalue):
+    Connected_Threshold = sitk.ConnectedThresholdImageFilter()
+    Connected_Threshold.SetUpper(2)
+    Connected_Threshold.SetSeedList(seeds)
+    Connected_Threshold.SetLower(thresholdvalue)
+    threshold_prediction = Connected_Threshold.Execute(sitk.Cast(predictionimage, sitk.sitkFloat32))
+    del Connected_Threshold, predictionimage, seeds, thresholdvalue
+    return threshold_prediction
+
+
+def createseeds(predictionimage, seed_value):
+    Connected_Component_Filter = sitk.ConnectedComponentImageFilter()
+    stats = sitk.LabelShapeStatisticsImageFilter()
+    thresholded_image = sitk.BinaryThreshold(sitk.Cast(predictionimage, sitk.sitkFloat32), lowerThreshold=seed_value)
+    connected_image = Connected_Component_Filter.Execute(thresholded_image)
+    stats.Execute(connected_image)
+    seeds = [stats.GetCentroid(l) for l in stats.GetLabels()]
+    seeds = [thresholded_image.TransformPhysicalPointToIndex(i) for i in seeds]
+    del stats, Connected_Component_Filter, connected_image, predictionimage, seed_value
+    return seeds
+
+
+class Threshold_and_Expand_New(ImageProcessor):
+    def __init__(self, seed_threshold_value=None, lower_threshold_value=None, prediction_key='prediction',
+                 ground_truth_key='annotation'):
+        self.seed_threshold_value = seed_threshold_value
+        self.Connected_Component_Filter = sitk.ConnectedComponentImageFilter()
+        self.RelabelComponent = sitk.RelabelComponentImageFilter()
+        self.Connected_Threshold = sitk.ConnectedThresholdImageFilter()
+        self.stats = sitk.LabelShapeStatisticsImageFilter()
+        self.lower_threshold_value = lower_threshold_value
+        self.Connected_Threshold.SetUpper(2)
+        self.prediction_key = prediction_key
+        self.ground_truth_key = ground_truth_key
+        self.Iterate_Lobe_Annotations_Class = Iterate_Lobe_Annotations()
+
+    def post_process(self, input_features):
+        pred = input_features[self.prediction_key]
+        ground_truth = input_features[self.ground_truth_key]
+        out_prediction = np.zeros(pred.shape).astype('float32')
+        for i in range(1, out_prediction.shape[-1]):
+            out_prediction[..., i] = sitk.GetArrayFromImage(
+                createthreshold(sitk.GetImageFromArray(pred[..., i].astype('float32')),
+                                createseeds(sitk.GetImageFromArray(pred[..., i].astype('float32')),
+                                            self.seed_threshold_value[i - 1]),
+                                self.lower_threshold_value[i - 1]))
+        summed_image = np.sum(out_prediction, axis=-1)
+        # stop = time.time()
+        out_prediction[summed_image > 1] = 0
+        out_prediction = self.Iterate_Lobe_Annotations_Class.iterate_annotations(
+            out_prediction, ground_truth > 0,
+            spacing=self.dicom_handle.GetSpacing(),
+            max_iteration=10, reduce2D=False)
+        input_features[self.prediction_key] = out_prediction
         return input_features
 
 
