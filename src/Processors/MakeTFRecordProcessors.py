@@ -626,6 +626,31 @@ class ConvertArrayToHandle(ImageProcessor):
         return input_features
 
 
+def _orient_handles_(moving_handle, fixed_handle):
+    moving_handle.SetSpacing(fixed_handle.GetSpacing())
+    moving_handle.SetOrigin(fixed_handle.GetOrigin())
+    moving_handle.SetDirection(fixed_handle.GetDirection())
+    return moving_handle
+
+
+class OrientHandleToAnother(ImageProcessor):
+    def __init__(self, moving_handle_keys=('gradients_handle',), fixed_handle_keys=('primary_handle',)):
+        """
+        :param moving_handle_keys: tuple of moving handle keys
+        :param fixed_handle_keys: tuple of fixed handle keys
+        """
+        self.moving_handle_keys = moving_handle_keys
+        self.fixed_handle_keys = fixed_handle_keys
+
+    def pre_process(self, input_features):
+        _check_keys_(input_features=input_features, keys=self.moving_handle_keys + self.fixed_handle_keys)
+        for moving_key, fixed_key in zip(self.moving_handle_keys, self.fixed_handle_keys):
+            moving_handle = input_features[moving_key]
+            fixed_handle = input_features[fixed_key]
+            input_features[moving_key] = _orient_handles_(moving_handle=moving_handle, fixed_handle=fixed_handle)
+        return input_features
+
+
 class Add_Images_And_Annotations(ImageProcessor):
     def __init__(self, nifti_path_keys=('image_path', 'annotation_path'), out_keys=('image', 'annotation'),
                  dtypes=('float32', 'int8')):
