@@ -1539,6 +1539,41 @@ class DistributeIntoCubes(ImageProcessor):
         return input_features
 
 
+class MaskOneBasedOnOther(ImageProcessor):
+    def __init__(self, guiding_keys=('annotation',), changing_keys=('image',), guiding_values=(1,), mask_values=(-1,),
+                 methods=('equal_to',)):
+        """
+        :param guiding_keys: keys which will guide the masking of another key
+        :param changing_keys: keys which will be masked
+        :param guiding_values: values which will define the mask
+        :param mask_values: values which will be changed
+        :param methods: method of masking, 'equal_to', 'less_than', 'greater_than'
+        """
+        self.guiding_keys, self.changing_keys = guiding_keys, changing_keys
+        self.guiding_values, self.mask_values = guiding_values, mask_values
+        for method in methods:
+            assert method in ('equal_to', 'less_than', 'greater_than'), 'Only provide a method of equal_to, ' \
+                                                                        'less_than, or greater_than'
+        self.methods = methods
+
+    def pre_process(self, input_features):
+        _check_keys_(input_features=input_features, keys=self.guiding_keys)
+        _check_keys_(input_features=input_features, keys=self.changing_keys)
+        for guiding_key, changing_key, guiding_value, mask_value, method in zip(self.guiding_keys, self.changing_keys,
+                                                                                self.guiding_values, self.mask_values,
+                                                                                self.methods):
+            if method == 'equal_to':
+                input_features[changing_key] = np.where(input_features[guiding_key] == guiding_value,
+                                                        mask_value, input_features[changing_key])
+            elif method == 'less_than':
+                input_features[changing_key] = np.where(input_features[guiding_key] < guiding_value,
+                                                        mask_value, input_features[changing_key])
+            elif method == 'greater_than':
+                input_features[changing_key] = np.where(input_features[guiding_key] > guiding_value,
+                                                        mask_value, input_features[changing_key])
+        return input_features
+
+
 class MaskKeys(ImageProcessor):
     def __init__(self, key_tuple=('annotation',), from_values_tuple=(2,), to_values_tuple=(1,)):
         """
@@ -1941,6 +1976,55 @@ class Box_Images(ImageProcessor):
                 annotation_cube[..., 0] = 1 - np.sum(annotation_cube[..., 1:], axis=-1)
             input_features[self.annotation_key] = annotation_cube
             input_features[self.image_key] = image_cube
+        return input_features
+
+
+class PadImages(ImageProcessor):
+    def __init__(self, bounding_box_expansion=(10, 10, 10), power_val_z=1, power_val_x=1,
+                 power_val_y=1, min_val=None, image_keys=('image', 'annotation'),
+                 post_process_keys=('image', 'annotation', 'prediction')):
+        self.bounding_box_expansion = bounding_box_expansion
+        self.min_val = min_val
+        self.power_val_z, self.power_val_x, self.power_val_y = power_val_z, power_val_x, power_val_y
+        self.image_keys = image_keys
+        self.post_process_keys = post_process_keys
+
+    def pre_process(self, input_features):
+        _check_keys_(input_features=input_features, keys=self.image_keys)
+        for key in self.image_keys:
+            images = input_features[key]
+            images_shape = images.shape
+            self.og_shape = images_shape
+            z_start, r_start, c_start = 0, 0, 0
+            z_stop, r_stop, c_stop = images_shape[0], images_shape[1], images_shape[2]
+            z_total, r_total, c_total = z_stop - z_start, r_stop - r_start, c_stop - c_start
+            self.remainder_z, self.remainder_r, self.remainder_c = self.power_val_z - z_total % self.power_val_z if z_total % self.power_val_z != 0 else 0, \
+                                                                   self.power_val_x - r_total % self.power_val_x if r_total % self.power_val_x != 0 else 0, \
+                                                                   self.power_val_y - c_total % self.power_val_y if c_total % self.power_val_y != 0 else 0
+            pads = [self.remainder_z, self.remainder_r, self.remainder_c]
+            self.pad = [[max([0, floor(i / 2)]), max([0, ceil(i / 2)])] for i in pads]
+            if len(images_shape) > 3:
+                self.pad = [[0, 0]] + self.pad
+            if self.min_val is None:
+                min_val = np.min(images)
+            else:
+                min_val = self.min_val
+            images = np.pad(images, self.pad, constant_values=min_val)
+            input_features[key] = images
+        return input_features
+
+    def post_process(self, input_features):
+        _check_keys_(input_features=input_features, keys=self.post_process_keys)
+        if max([self.remainder_z, self.remainder_r, self.remainder_c]) == 0:
+            return input_features
+        for key in self.post_process_keys:
+            pred = input_features[key]
+            if len(pred.shape) == 3 or len(pred.shape) == 4:
+                pred = pred[self.pad[0][0]:, self.pad[1][0]:, self.pad[2][0]:]
+                pred = pred[:self.og_shape[0], :self.og_shape[1], :self.og_shape[2]]
+            elif len(pred.shape) == 5:
+                pred = pred[:, self.pad[0][0]:, self.pad[1][0]:, self.pad[2][0]:]
+                pred = pred[:, :self.og_shape[0], :self.og_shape[1], :self.og_shape[2]]
         return input_features
 
 
