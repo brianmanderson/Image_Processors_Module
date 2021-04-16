@@ -669,6 +669,144 @@ class VGGNormalize(ImageProcessor):
             input_features[key] = images
         return input_features
 
+
+class Threshold_Prediction(ImageProcessor):
+    def __init__(self, threshold=0.0, single_structure=True, is_liver=False, min_volume=0.0,
+                 prediction_keys=('prediction')):
+        '''
+        :param threshold:
+        :param single_structure:
+        :param is_liver:
+        :param min_volume: in ccs
+        '''
+        self.threshold = threshold
+        self.is_liver = is_liver
+        self.min_volume = min_volume
+        self.single_structure = single_structure
+        self.prediction_keys = prediction_keys
+
+    def post_process(self, input_features):
+        _check_keys_(input_features=input_features, keys=self.prediction_keys)
+        for key in self.prediction_keys:
+            pred = input_features[key]
+            if self.is_liver:
+                pred[..., -1] = variable_remove_non_liver(pred[..., -1], threshold=0.2, is_liver=True)
+            if self.threshold != 0.0:
+                for i in range(1, pred.shape[-1]):
+                    pred[..., i] = remove_non_liver(pred[..., i], threshold=self.threshold, do_3D=self.single_structure,
+                                                    min_volume=self.min_volume)
+            input_features[key] = pred
+        return input_features
+
+
+def variable_remove_non_liver(annotations, threshold=0.5, is_liver=False):
+    image_size_1 = annotations.shape[1]
+    image_size_2 = annotations.shape[2]
+    compare = copy.deepcopy(annotations)
+    if is_liver:
+        images_filt = gaussian_filter(copy.deepcopy(annotations), [0, .75, .75])
+    else:
+        images_filt = gaussian_filter(copy.deepcopy(annotations), [0, 1.5, 1.5])
+    compare[compare < .01] = 0
+    compare[compare > 0] = 1
+    compare = compare.astype('int')
+    for i in range(annotations.shape[0]):
+        image = annotations[i, :, :]
+        out_image = np.zeros([image_size_1,image_size_2])
+
+        labels = morphology.label(compare[i, :, :],connectivity=1)
+        for xxx in range(1,labels.max() + 1):
+            overlap = image[labels == xxx]
+            pred = sum(overlap)/overlap.shape[0]
+            cutoff = threshold
+            if pred < 0.75:
+                cutoff = 0.15
+            if cutoff != 0.95 and overlap.shape[0] < 500 and is_liver:
+                k = copy.deepcopy(compare[i, :, :])
+                k[k > cutoff] = 1
+                out_image[labels == xxx] = k[labels == xxx]
+            elif not is_liver:
+                image_filt = images_filt[i, :, :]
+                image_filt[image_filt < threshold] = 0
+                image_filt[image_filt > 0] = 1
+                image_filt = image_filt.astype('int')
+                out_image[labels == xxx] = image_filt[labels == xxx]
+            else:
+                image_filt = images_filt[i, :, :]
+                image_filt[image_filt < cutoff] = 0
+                image_filt[image_filt > 0] = 1
+                image_filt = image_filt.astype('int')
+                out_image[labels == xxx] = image_filt[labels == xxx]
+        annotations[i, :, :] = out_image
+    return annotations
+
+
+def remove_non_liver(annotations, threshold=0.5, max_volume=9999999.0, min_volume=0.0, max_area=99999.0, min_area=0.0,
+                     do_3D = True, do_2D=False, spacing=None):
+    '''
+    :param annotations: An annotation of shape [Z_images, rows, columns]
+    :param threshold: Threshold of probability from 0.0 to 1.0
+    :param max_volume: Max volume of structure allowed
+    :param min_volume: Minimum volume of structure allowed, in ccs
+    :param max_area: Max volume of structure allowed
+    :param min_area: Minimum volume of structure allowed
+    :param do_3D: Do a 3D removal of structures, only take largest connected structure
+    :param do_2D: Do a 2D removal of structures, only take largest connected structure
+    :param spacing: Spacing of elements, in form of [z_spacing, row_spacing, column_spacing]
+    :return: Masked annotation
+    '''
+    min_volume = min_volume * (10 * 10 * 10)  # cm to mm3
+    annotations = copy.deepcopy(annotations)
+    annotations = np.squeeze(annotations)
+    if not annotations.dtype == 'int':
+        annotations[annotations < threshold] = 0
+        annotations[annotations > 0] = 1
+        annotations = annotations.astype('int')
+    if do_3D:
+        labels = morphology.label(annotations, connectivity=1)
+        if np.max(labels) > 1:
+            area = []
+            max_val = 0
+            for i in range(1,labels.max()+1):
+                new_area = labels[labels == i].shape[0]
+                if spacing is not None:
+                    volume = np.prod(spacing) * new_area
+                    if volume > max_volume:
+                        continue
+                    elif volume < min_volume:
+                        continue
+                area.append(new_area)
+                if new_area == max(area):
+                    max_val = i
+            labels[labels != max_val] = 0
+            labels[labels > 0] = 1
+            annotations = labels
+    if do_2D:
+        slice_indexes = np.where(np.sum(annotations,axis=(1,2))>0)
+        if slice_indexes:
+            for slice_index in slice_indexes[0]:
+                labels = morphology.label(annotations[slice_index], connectivity=1)
+                if np.max(labels) == 1:
+                    continue
+                area = []
+                max_val = 0
+                for i in range(1, labels.max() + 1):
+                    new_area = labels[labels == i].shape[0]
+                    if spacing is not None:
+                        temp_area = np.prod(spacing[1:]) * new_area / 100
+                        if temp_area > max_area:
+                            continue
+                        elif temp_area < min_area:
+                            continue
+                    area.append(new_area)
+                    if new_area == max(area):
+                        max_val = i
+                labels[labels != max_val] = 0
+                labels[labels > 0] = 1
+                annotations[slice_index] = labels
+    return annotations
+
+
 class ExpandDimensions(ImageProcessor):
     def __init__(self, axis=-1, image_keys=('image', 'annotation')):
         self.axis = axis
@@ -1047,20 +1185,25 @@ class Distribute_into_2D(ImageProcessor):
 
 
 class NormalizeParotidMR(ImageProcessor):
+    def __init__(self, image_keys=('image',)):
+        self.image_keys = image_keys
+
     def pre_process(self, input_features):
-        images = input_features['image']
-        data = images.flatten()
-        counts, bins = np.histogram(data, bins=1000)
-        count_index = 0
-        count_value = 0
-        while count_value / np.sum(counts) < .3:  # Throw out the bottom 30 percent of data, as that is usually just 0s
-            count_value += counts[count_index]
-            count_index += 1
-        min_bin = bins[count_index]
-        data = data[data > min_bin]
-        mean_val, std_val = np.mean(data), np.std(data)
-        images = (images - mean_val) / std_val
-        input_features['image'] = images
+        _check_keys_(input_features=input_features, keys=self.image_keys)
+        for key in self.image_keys:
+            images = input_features[key]
+            data = images.flatten()
+            counts, bins = np.histogram(data, bins=1000)
+            count_index = 0
+            count_value = 0
+            while count_value / np.sum(counts) < .3:  # Throw out the bottom 30 percent of data, as that is usually just 0s
+                count_value += counts[count_index]
+                count_index += 1
+            min_bin = bins[count_index]
+            data = data[data > min_bin]
+            mean_val, std_val = np.mean(data), np.std(data)
+            images = (images - mean_val) / std_val
+            input_features[key] = images
         return input_features
 
 
@@ -1381,6 +1524,49 @@ class DivideByValues(ImageProcessor):
             image_array = input_features[key]
             image_array /= value
             input_features[key] = image_array
+        return input_features
+
+
+class Threshold_and_Expand(ImageProcessor):
+    def __init__(self, seed_threshold_value=None, lower_threshold_value=None, prediction_key='pred'):
+        self.seed_threshold_value = seed_threshold_value
+        self.Connected_Component_Filter = sitk.ConnectedComponentImageFilter()
+        self.RelabelComponent = sitk.RelabelComponentImageFilter()
+        self.Connected_Threshold = sitk.ConnectedThresholdImageFilter()
+        self.stats = sitk.LabelShapeStatisticsImageFilter()
+        self.lower_threshold_value = lower_threshold_value
+        self.Connected_Threshold.SetUpper(2)
+        self.prediction_key = prediction_key
+
+    def post_process(self, input_features):
+        pred = input_features[self.prediction_key]
+        for i in range(1, pred.shape[-1]):
+            temp_pred = pred[..., i]
+            output = np.zeros(temp_pred.shape)
+            expanded = False
+            if len(temp_pred.shape) == 4:
+                temp_pred = temp_pred[0]
+                expanded = True
+            prediction = sitk.GetImageFromArray(temp_pred)
+            if type(self.seed_threshold_value) is not list:
+                seed_threshold = self.seed_threshold_value
+            else:
+                seed_threshold = self.seed_threshold_value[i - 1]
+            if type(self.lower_threshold_value) is not list:
+                lower_threshold = self.lower_threshold_value
+            else:
+                lower_threshold = self.lower_threshold_value[i - 1]
+            overlap = temp_pred > seed_threshold
+            if np.max(overlap) > 0:
+                seeds = np.transpose(np.asarray(np.where(overlap > 0)))[..., ::-1]
+                seeds = [[int(i) for i in j] for j in seeds]
+                self.Connected_Threshold.SetLower(lower_threshold)
+                self.Connected_Threshold.SetSeedList(seeds)
+                output = sitk.GetArrayFromImage(self.Connected_Threshold.Execute(prediction))
+                if expanded:
+                    output = output[None, ...]
+            pred[..., i] = output
+        input_features[self.prediction_key] = pred
         return input_features
 
 
