@@ -381,6 +381,147 @@ class To_Categorical(ImageProcessor):
         return input_features
 
 
+class Iterate_Overlap(ImageProcessor):
+    def __init__(self, on_liver_lobes=True, max_iterations=10, prediction_key='pred', ground_truth_key='annotations',
+                 dicom_handle_key='primary_handle'):
+        self.max_iterations = max_iterations
+        self.on_liver_lobes = on_liver_lobes
+        MauererDistanceMap = sitk.SignedMaurerDistanceMapImageFilter()
+        MauererDistanceMap.SetInsideIsPositive(True)
+        MauererDistanceMap.UseImageSpacingOn()
+        MauererDistanceMap.SquaredDistanceOff()
+        self.MauererDistanceMap = MauererDistanceMap
+        self.Remove_Smallest_Structure = Remove_Smallest_Structures()
+        self.Smooth_Annotation = SmoothingPredictionRecursiveGaussian()
+        self.prediction_key = prediction_key
+        self.ground_truth_key = ground_truth_key
+        self.dicom_handle_key = dicom_handle_key
+
+    def remove_56_78(self, annotations):
+        amounts = np.sum(annotations, axis=(1, 2))
+        indexes = np.where((np.max(amounts[:, (5, 6)], axis=-1) > 0) & (np.max(amounts[:, (7, 8)], axis=-1) > 0))
+        if indexes:
+            indexes = indexes[0]
+            for i in indexes:
+                if amounts[i, 5] < amounts[i, 8]:
+                    annotations[i, ..., 8] += annotations[i, ..., 5]
+                    annotations[i, ..., 5] = 0
+                else:
+                    annotations[i, ..., 5] += annotations[i, ..., 8]
+                    annotations[i, ..., 8] = 0
+                if amounts[i, 6] < amounts[i, 7]:
+                    annotations[i, ..., 7] += annotations[i, ..., 6]
+                    annotations[i, ..., 6] = 0
+                else:
+                    annotations[i, ..., 6] += annotations[i, ..., 7]
+                    annotations[i, ..., 7] = 0
+        return annotations
+
+    def iterate_annotations(self, annotations_out, ground_truth_out, spacing, allowed_differences=50, z_mult=1):
+        '''
+        :param annotations:
+        :param ground_truth:
+        :param spacing:
+        :param allowed_differences:
+        :param max_iteration:
+        :param z_mult: factor by which to ensure slices don't bleed into ones above and below
+        :return:
+        '''
+        self.Remove_Smallest_Structure.spacing = self.dicom_handle.GetSpacing()
+        self.Smooth_Annotation.spacing = self.dicom_handle.GetSpacing()
+        annotations_out[ground_truth_out == 0] = 0
+        min_z, max_z, min_r, max_r, min_c, max_c = get_bounding_box_indexes(ground_truth_out)
+        annotations = annotations_out[min_z:max_z, min_r:max_r, min_c:max_c, ...]
+        ground_truth = ground_truth_out[min_z:max_z, min_r:max_r, min_c:max_c, ...]
+        spacing[-1] *= z_mult
+        differences = [np.inf]
+        index = 0
+        while differences[-1] > allowed_differences and index < self.max_iterations:
+            index += 1
+            print('Iterating {}'.format(index))
+            # if self.on_liver_lobes:
+            #     annotations = self.remove_56_78(annotations)
+            previous_iteration = copy.deepcopy(np.argmax(annotations, axis=-1))
+            for i in range(1, annotations.shape[-1]):
+                annotation_handle = sitk.GetImageFromArray(annotations[..., i])
+                annotation_handle.SetSpacing(self.dicom_handle.GetSpacing())
+                pruned_handle = self.Remove_Smallest_Structure.remove_smallest_component(annotation_handle)
+                annotations[..., i] = sitk.GetArrayFromImage(pruned_handle)
+                slices = np.where(annotations[..., i] == 1)
+                if slices:
+                    slices = np.unique(slices[0])
+                    for ii in range(len(slices)):
+                        image_handle = sitk.GetImageFromArray(annotations[slices[ii], ..., i][None, ...])
+                        pruned_handle = self.Remove_Smallest_Structure.remove_smallest_component(image_handle)
+                        annotations[slices[ii], ..., i] = sitk.GetArrayFromImage(pruned_handle)
+
+            annotations = self.make_distance_map(annotations, ground_truth, spacing=spacing)
+            differences.append(np.abs(
+                np.sum(previous_iteration[ground_truth == 1] - np.argmax(annotations, axis=-1)[ground_truth == 1])))
+        annotations_out[min_z:max_z, min_r:max_r, min_c:max_c, ...] = annotations
+        annotations_out[ground_truth_out == 0] = 0
+        return annotations_out
+
+    def run_distance_map(self, array, spacing):
+        image = sitk.GetImageFromArray(array)
+        image.SetSpacing(spacing)
+        output = self.MauererDistanceMap.Execute(image)
+        output = sitk.GetArrayFromImage(output)
+        return output
+
+    def make_distance_map(self, pred, liver, reduce=True, spacing=(0.975, 0.975, 2.5)):
+        '''
+        :param pred: A mask of your predictions with N channels on the end, N=0 is background [# Images, rows, cols, N]
+        :param liver: A mask of the desired region [# Images, rows, cols]
+        :param reduce: Save time and only work on masked region
+        :return:
+        '''
+        liver = np.squeeze(liver)
+        pred = np.squeeze(pred)
+        pred = np.round(pred).astype('int')
+        min_z, min_r, min_c, max_z, max_r, max_c = 0, 0, 0, pred.shape[0], pred.shape[1], pred.shape[2]
+
+        if reduce:
+            min_z, max_z, min_r, max_r, min_c, max_c = get_bounding_box_indexes(liver)
+        reduced_pred = pred[min_z:max_z, min_r:max_r, min_c:max_c]
+        reduced_liver = liver[min_z:max_z, min_r:max_r, min_c:max_c]
+        reduced_output = np.zeros(reduced_pred.shape)
+        for i in range(1, pred.shape[-1]):
+            temp_reduce = reduced_pred[..., i]
+            output = self.run_distance_map(temp_reduce, spacing)
+            reduced_output[..., i] = output
+        reduced_output[reduced_output > 0] = 0
+        reduced_output = np.abs(reduced_output)
+        reduced_output[..., 0] = np.inf
+        output = np.zeros(reduced_output.shape, dtype='int')
+        mask = reduced_liver == 1
+        values = reduced_output[mask]
+        output[mask, np.argmin(values, axis=-1)] = 1
+        pred[min_z:max_z, min_r:max_r, min_c:max_c] = output
+        return pred
+
+    def post_process(self, input_features):
+        pred = input_features[self.prediction_key]
+        ground_truth = input_features[self.ground_truth_key]
+        pred = self.iterate_annotations(pred, ground_truth, spacing=list(self.dicom_handle.GetSpacing()), z_mult=1)
+        input_features[self.prediction_key] = pred
+        return input_features
+
+
+class Rename_Lung_Voxels_Ground_Glass(Iterate_Overlap):
+    def post_process(self, input_features):
+        pred = input_features[self.prediction_key]
+        dicom_handle = input_features[self.dicom_handle_key]
+        mask = np.sum(pred[..., 1:], axis=-1)
+        lungs = np.stack([mask, mask], axis=-1)
+        lungs = self.iterate_annotations(lungs, mask, spacing=list(dicom_handle.GetSpacing()), z_mult=1)
+        lungs = lungs[..., 1]
+        pred[lungs == 0] = 0
+        pred[..., 2] = lungs # Just put lungs in as entirety
+        input_features[self.prediction_key] = pred
+        return input_features
+
+
 class Resample_LiTs(ImageProcessor):
     def __init__(self, desired_output_spacing=(None, None, None)):
         self.desired_output_spacing = desired_output_spacing
@@ -591,6 +732,21 @@ def image_resize(image, width=None, height=None, inter=cv2.INTER_AREA):
 
     # return the resized image
     return resized
+
+
+class ArgMax(ImageProcessor):
+    def __init__(self, image_keys=('prediction',)):
+        self.image_keys = image_keys
+
+    def pre_process(self, input_features):
+        _check_keys_(input_features=input_features, keys=self.image_keys)
+        for key in self.image_keys:
+            pred = input_features[key]
+            out_classes = pred.shape[-1]
+            pred = np.argmax(pred, axis=-1)
+            input_features[key] = pred
+            pred = to_categorical(pred, out_classes)
+        return input_features
 
 
 class Ensure_Image_Proportions(ImageProcessor):
@@ -1524,6 +1680,27 @@ class DivideByValues(ImageProcessor):
             image_array = input_features[key]
             image_array /= value
             input_features[key] = image_array
+        return input_features
+
+
+class Fill_Binary_Holes(ImageProcessor):
+    def __init__(self, prediction_key, dicom_handle_key):
+        self.BinaryfillFilter = sitk.BinaryFillholeImageFilter()
+        self.BinaryfillFilter.SetFullyConnected(True)
+        self.prediction_key = prediction_key
+        self.dicom_handle_key = dicom_handle_key
+
+    def post_process(self, input_features):
+        pred = input_features[self.prediction_key]
+        dicom_handle = input_features[self.dicom_handle_key]
+        for class_num in range(1, pred.shape[-1]):
+            temp_pred = pred[..., class_num]
+            k = sitk.GetImageFromArray(temp_pred.astype('int'))
+            k.SetSpacing(dicom_handle.GetSpacing())
+            output = self.BinaryfillFilter.Execute(k)
+            output_array = sitk.GetArrayFromImage(output)
+            pred[..., class_num] = output_array
+        input_features[self.prediction_key] = pred
         return input_features
 
 
