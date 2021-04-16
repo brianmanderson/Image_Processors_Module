@@ -412,7 +412,9 @@ class Resample_LiTs(ImageProcessor):
 
 class Resampler(ImageProcessor):
     def __init__(self, resample_keys=('image', 'annotation'), resample_interpolators=('Linear', 'Nearest'),
-                 desired_output_spacing=(None, None, None), make_512=False, verbose=True):
+                 desired_output_spacing=(None, None, None), make_512=False, verbose=True,
+                 post_process_resample_keys=None, post_process_original_spacing_keys=None,
+                 post_process_interpolators=None):
         """
         :param resample_keys: tuple of keys in input_features to resample
         :param resample_interpolators: tuple of SimpleITK interpolators, 'Linear' or 'Nearest'
@@ -424,6 +426,9 @@ class Resampler(ImageProcessor):
         self.resample_interpolators = resample_interpolators
         self.make_512 = make_512
         self.verbose = verbose
+        self.post_process_resample_keys = post_process_resample_keys
+        self.post_process_original_spacing_keys = post_process_original_spacing_keys
+        self.post_process_interpolators = post_process_interpolators
 
     def pre_process(self, input_features):
         resampler = ImageResampler()
@@ -456,6 +461,7 @@ class Resampler(ImageProcessor):
                 else:
                     output_spacing.append(self.desired_output_spacing[index])
             output_spacing = tuple(output_spacing)
+            input_features['{}_original_spacing'.format(key)] = np.asarray(input_spacing, dtype='float32')
             if output_spacing != input_spacing:
                 if self.verbose:
                     print('Resampling {} to {}'.format(input_spacing, output_spacing))
@@ -481,6 +487,85 @@ class Resampler(ImageProcessor):
                     input_features[key] = stacked
                     input_features['{}_spacing'.format(key)] = np.asarray(self.desired_output_spacing, dtype='float32')
         input_features['spacing'] = np.asarray(self.desired_output_spacing, dtype='float32')
+        return input_features
+
+    def post_process(self, input_features):
+        if self.post_process_resample_keys is None:
+            return input_features
+        if self.post_process_original_spacing_keys is None:
+            return input_features
+        resampler = ImageResampler()
+        _check_keys_(input_features=input_features, keys=self.post_process_resample_keys)
+        for spacing_key, key, interpolator in zip(self.post_process_original_spacing_keys,
+                                                  self.post_process_resample_keys,
+                                                  self.post_process_interpolators):
+            desired_output_spacing = tuple([float(i) for i in input_features['{}_original_spacing'.format(spacing_key)]])
+            image_handle = input_features[key]
+            input_spacing = tuple([float(i) for i in input_features['{}_spacing'.format(key)]])
+            image_array = None
+            if type(image_handle) is np.ndarray:
+                image_array = image_handle
+                image_handle = sitk.GetImageFromArray(image_handle)
+                image_handle.SetSpacing(input_spacing)
+
+            output_spacing = []
+            for index in range(3):
+                if desired_output_spacing[index] is None:
+                    if input_spacing[index] < 0.5 and self.make_512:
+                        spacing = input_spacing[index] * 2
+                    else:
+                        spacing = input_spacing[index]
+                    output_spacing.append(spacing)
+                else:
+                    output_spacing.append(desired_output_spacing[index])
+            output_spacing = tuple(output_spacing)
+            if output_spacing != input_spacing:
+                if self.verbose:
+                    print('Resampling {} to {}'.format(input_spacing, output_spacing))
+                if image_array is None:
+                    image_array = sitk.GetArrayFromImage(image_handle)
+                if len(image_array.shape) == 3:
+                    image_handle = resampler.resample_image(input_image_handle=image_handle,
+                                                            output_spacing=output_spacing,
+                                                            interpolator=interpolator)
+                    input_features[key] = sitk.GetArrayFromImage(image_handle)
+                else:
+                    output = []
+                    for i in range(image_array.shape[-1]):
+                        reduced_handle = sitk.GetImageFromArray(image_array[..., i])
+                        reduced_handle.SetSpacing(input_spacing)
+                        resampled_handle = resampler.resample_image(input_image_handle=reduced_handle,
+                                                                    output_spacing=output_spacing,
+                                                                    interpolator=interpolator)
+                        output.append(sitk.GetArrayFromImage(resampled_handle)[..., None])
+                    stacked = np.concatenate(output, axis=-1)
+                    stacked[..., 0] = 1 - np.sum(stacked[..., 1:], axis=-1)
+                    input_features[key] = stacked
+        return input_features
+
+
+class CombineKeys(ImageProcessor):
+    def __init__(self, image_keys=('primary_image', 'secondary_image'), output_key='combined', axis=-1):
+        self.image_keys = image_keys
+        self.output_key = output_key
+        self.axis = axis
+
+    def pre_process(self, input_features):
+        _check_keys_(input_features=input_features, keys=self.image_keys)
+        combine_images = [input_features[i] for i in self.image_keys]
+        input_features[self.output_key] = np.concatenate(combine_images, axis=self.axis)
+        return input_features
+
+
+class ExpandDimensions(ImageProcessor):
+    def __init__(self, axis=-1, image_keys=('image', 'annotation')):
+        self.axis = axis
+        self.image_keys = image_keys
+
+    def pre_process(self, input_features):
+        _check_keys_(input_features, self.image_keys)
+        for key in self.image_keys:
+            input_features[key] = np.expand_dims(input_features[key], axis=self.axis)
         return input_features
 
 
@@ -509,20 +594,20 @@ class CastHandle(ImageProcessor):
         return input_features
 
 
-class Cast_Data(ImageProcessor):
-    def __init__(self, key_type_dict=None):
-        '''
-        :param key_type_dict: A dictionary of keys and datatypes wanted {'image':'float32'}
-        '''
-        assert key_type_dict is not None and type(key_type_dict) is dict, 'Need to provide a key_type_dict, something' \
-                                                                          ' like {"image":"float32"}'
-        self.key_type_dict = key_type_dict
+class CastData(ImageProcessor):
+    def __init__(self, image_keys=('image',), dtypes=('float32',)):
+        """
+        :param image_keys: tuple of image keys in dictionary
+        :param dtypes: tuple of string data types
+        """
+        self.image_keys = image_keys
+        self.dtypes = dtypes
 
-    def pre_process(self, image_features, *args, **kwargs):
-        for key in self.key_type_dict:
-            if key in image_features:
-                image_features[key] = image_features[key].astype(self.key_type_dict[key])
-        return image_features
+    def pre_process(self, input_features):
+        _check_keys_(input_features=input_features, keys=self.image_keys)
+        for key, dtype in zip(self.image_keys, self.dtypes):
+            input_features[key] = input_features[key].astype(dtype)
+        return input_features
 
 
 class Add_Images_And_Annotations(ImageProcessor):
@@ -863,6 +948,147 @@ class AddLiverKey(ImageProcessor):
                 output = np.argmax(annotation, axis=-1)[..., None]
                 output[output > 0] = 1
                 input_features[out_key] = output
+        return input_features
+
+
+class DistributeIntoCubes(ImageProcessor):
+    def __init__(self, rows=128, cols=128, images=32, resize_keys_tuple=None, wanted_keys=('spacing', ),
+                 image_keys=('primary_image', 'secondary_image_deformed'), mask_key='primary_mask',
+                 mask_value=1, out_mask_name='primary_liver'):
+        self.rows, self.cols, self.images = rows, cols, images
+        self.resize_keys_tuple = resize_keys_tuple
+        self.wanted_keys = wanted_keys
+        self.image_keys = image_keys
+        self.mask_key = mask_key
+        self.mask_value = mask_value
+        self.out_mask_name = out_mask_name
+    """
+    Highly specialized for the task of model prediction, likely won't be useful for others
+    """
+    def pre_process(self, input_features):
+        _check_keys_(input_features=input_features, keys=(self.mask_key,))
+        out_features = OrderedDict()
+        primary_mask = input_features[self.mask_key]
+        image_size = primary_mask.shape
+        '''
+        Now, find centroids in the cases
+        '''
+        Connected_Component_Filter = sitk.ConnectedComponentImageFilter()
+        Connected_Component_Filter.FullyConnectedOn()
+        stats = sitk.LabelShapeStatisticsImageFilter()
+
+        cube_image = sitk.GetImageFromArray((primary_mask == self.mask_value).astype('int'))
+        connected_image = Connected_Component_Filter.Execute(cube_image)
+        stats.Execute(connected_image)
+        labels = [l for l in stats.GetLabels()]
+        all_centroids = [cube_image.TransformPhysicalPointToIndex(stats.GetCentroid(l))
+                         for l in labels]
+
+        for value, cube_name, centroids, label, image in zip([0], ['Cube_{}'],
+                                                             [all_centroids],
+                                                             [labels],
+                                                             [connected_image]):
+            for index, centroid in enumerate(centroids):
+                temp_feature = OrderedDict()
+                col_center, row_center, z_center = centroid
+                z_start_pad, z_stop_pad, r_start_pad, r_stop_pad, c_start_pad, c_stop_pad = 0, 0, 0, 0, 0, 0
+                z_start = z_center - self.images // 2
+                if z_start < 0:
+                    z_start_pad = abs(z_start)
+                    z_start = 0
+                z_stop = z_center + self.images // 2
+                if z_stop > image_size[0]:
+                    z_stop_pad = z_stop - image_size[0]
+                    z_stop = image_size[0]
+                r_start = row_center - self.rows // 2
+                if r_start < 0:
+                    r_start_pad = abs(r_start)
+                    r_start = 0
+                r_stop = row_center + self.rows // 2
+                if r_stop > image_size[1]:
+                    r_stop_pad = r_stop - image_size[1]
+                    r_stop = image_size[1]
+                c_start = col_center - self.cols // 2
+                if c_start < 0:
+                    c_start_pad = abs(c_start)
+                    c_start = 0
+                c_stop = col_center + self.cols // 2
+                if c_stop > image_size[2]:
+                    c_stop_pad = c_stop - image_size[2]
+                    c_stop = image_size[2]
+                index_mask = sitk.GetArrayFromImage(image)
+                index_mask[index_mask != label[index]] = 0
+                index_mask[index_mask > 0] = 1
+                index_mask = index_mask.astype('int')
+                index_mask = index_mask[z_start:z_stop, r_start:r_stop, c_start:c_stop]
+                primary_liver_cube = primary_mask[z_start:z_stop, r_start:r_stop, c_start:c_stop]
+                pads = [[z_start_pad, z_stop_pad], [r_start_pad, r_stop_pad], [c_start_pad, c_stop_pad]]
+                if np.max(pads) > 0:
+                    primary_liver_cube = np.pad(primary_liver_cube, pads, constant_values=np.min(primary_liver_cube))
+                    index_mask = np.pad(index_mask, pads, constant_values=np.min(index_mask))
+                for image_key in self.image_keys:
+                    primary_array = input_features[image_key]
+                    primary_array_cube = primary_array[z_start:z_stop, r_start:r_stop, c_start:c_stop]
+                    if np.max(pads) > 0:
+                        primary_array_cube = np.pad(primary_array_cube, pads,
+                                                    constant_values=np.min(primary_array_cube))
+                    temp_feature[image_key] = primary_array_cube
+
+                temp_feature['z_start'] = z_start
+                temp_feature['image_size'] = image_size
+                temp_feature['z_start_pad'] = z_start_pad
+                temp_feature['r_start'] = r_start
+                temp_feature['r_start_pad'] = r_start_pad
+                temp_feature['c_start'] = c_start
+                temp_feature['c_start_pad'] = c_start_pad
+                primary_liver_cube[primary_liver_cube > 0] = 1  # Make it so we have liver at 1, and disease as 2
+                primary_liver_cube[index_mask == 1] = 2
+                primary_liver_cube = primary_liver_cube.astype('int8')
+                temp_feature[self.out_mask_name] = primary_liver_cube
+                if self.wanted_keys is not None:
+                    for key in self.wanted_keys:  # Bring along anything else we care about
+                        if key not in temp_feature.keys():
+                            temp_feature[key] = input_features[key]
+                else:
+                    for key in input_features.keys():
+                        if key not in temp_feature.keys():
+                            temp_feature[key] = input_features[key]
+                out_features[cube_name.format(index)] = temp_feature
+        return out_features
+
+    def post_process(self, input_features):
+        if self.resize_keys_tuple is not None:
+            _check_keys_(input_features=input_features, keys=self.resize_keys_tuple)
+            og_image_size = input_features['image_size']
+            z_start = input_features['z_start']
+            r_start = input_features['r_start']
+            c_start = input_features['c_start']
+            for key in self.resize_keys_tuple:
+                image = input_features[key]
+                pads = [[z_start, 0], [r_start, 0], [c_start, 0]]
+                image = np.pad(image, pads, constant_values=np.min(image))
+                pads = [[0, og_image_size[0] - image.shape[0]], [0, og_image_size[1] - image.shape[1]],
+                        [0, og_image_size[2] - image.shape[2]]]
+                image = np.pad(image, pads, constant_values=np.min(image))
+                input_features[key] = image
+        return input_features
+
+
+class MaskKeys(ImageProcessor):
+    def __init__(self, key_tuple=('annotation',), from_values_tuple=(2,), to_values_tuple=(1,)):
+        """
+        :param key_tuple: tuple of key names that will be present in image_features
+        :param from_values_tuple: tuple of values that we will change from
+        :param to_values_tuple: tuple of values that we will change to
+        """
+        self.key_list = key_tuple
+        self.from_list = from_values_tuple
+        self.to_list = to_values_tuple
+
+    def pre_process(self, input_features):
+        _check_keys_(input_features=input_features, keys=self.key_list)
+        for key, from_value, to_value in zip(self.key_list, self.from_list, self.to_list):
+            input_features[key] = np.where(input_features[key] == from_value, to_value, input_features[key])
         return input_features
 
 
