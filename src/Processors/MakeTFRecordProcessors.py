@@ -17,7 +17,10 @@ from Plot_And_Scroll_Images.Plot_Scroll_Images import plot_scroll_Image, plt
 
 
 class ImageProcessor(object):
-    def parse(self, input_features):
+    def pre_process(self, input_features):
+        return input_features
+
+    def post_process(self, input_features):
         return input_features
 
 
@@ -303,7 +306,7 @@ class Gaussian_Uncertainty(ImageProcessor):
         '''
         self.sigma = sigma
 
-    def parse(self, input_features):
+    def pre_process(self, input_features):
         remove_lowest_probability = Remove_Lowest_Probabilty_Structure()
         remove_smallest = Remove_Smallest_Structures()
         annotations = input_features['annotation']
@@ -351,7 +354,7 @@ class Combine_Annotations(ImageProcessor):
         self.annotation_input = annotation_input
         self.to_annotation = to_annotation
 
-    def parse(self, input_features):
+    def pre_process(self, input_features):
         annotation = input_features['annotation']
         assert len(annotation.shape) == 3 or len(
             annotation.shape) == 4, 'To combine annotations the size has to be 3 or 4'
@@ -370,7 +373,7 @@ class To_Categorical(ImageProcessor):
         self.num_classes = num_classes
         self.annotation_key = annotation_key
 
-    def parse(self, input_features):
+    def pre_process(self, input_features):
         _check_keys_(input_features=input_features, keys=self.annotation_key)
         input_features[self.annotation_key] = to_categorical(input_features[self.annotation_key], self.num_classes)
         input_features['num_classes_{}'.format(self.annotation_key)] = self.num_classes
@@ -381,7 +384,7 @@ class Resample_LiTs(ImageProcessor):
     def __init__(self, desired_output_spacing=(None, None, None)):
         self.desired_output_spacing = desired_output_spacing
 
-    def parse(self, input_features):
+    def pre_process(self, input_features):
         input_spacing = tuple([float(i) for i in input_features['spacing']])
         image_handle = sitk.GetImageFromArray(input_features['image'])
         image_handle.SetSpacing(input_spacing)
@@ -422,7 +425,7 @@ class Resampler(ImageProcessor):
         self.make_512 = make_512
         self.verbose = verbose
 
-    def parse(self, input_features):
+    def pre_process(self, input_features):
         resampler = ImageResampler()
         _check_keys_(input_features=input_features, keys=self.resample_keys)
         for key, interpolator in zip(self.resample_keys, self.resample_interpolators):
@@ -490,7 +493,7 @@ class CastHandle(ImageProcessor):
         self.image_handle_keys = image_handle_keys
         self.d_type_keys = d_type_keys
 
-    def parse(self, input_features):
+    def pre_process(self, input_features):
         _check_keys_(input_features=input_features, keys=self.image_handle_keys)
         for key, dtype in zip(self.image_handle_keys, self.d_type_keys):
             if dtype.find('float') != -1:
@@ -515,7 +518,7 @@ class Cast_Data(ImageProcessor):
                                                                           ' like {"image":"float32"}'
         self.key_type_dict = key_type_dict
 
-    def parse(self, image_features, *args, **kwargs):
+    def pre_process(self, image_features, *args, **kwargs):
         for key in self.key_type_dict:
             if key in image_features:
                 image_features[key] = image_features[key].astype(self.key_type_dict[key])
@@ -527,7 +530,7 @@ class Add_Images_And_Annotations(ImageProcessor):
                  dtypes=('float32', 'int8')):
         self.nifti_path_keys, self.out_keys, self.dtypes = nifti_path_keys, out_keys, dtypes
 
-    def parse(self, input_features):
+    def pre_process(self, input_features):
         _check_keys_(input_features=input_features, keys=self.nifti_path_keys)
         for nifti_path_key, out_key, dtype in zip(self.nifti_path_keys, self.out_keys, self.dtypes):
             image_handle = sitk.ReadImage(input_features[nifti_path_key])
@@ -541,7 +544,7 @@ class AddNifti(ImageProcessor):
     def __init__(self, nifti_path_keys=('image_path', 'annotation_path'), out_keys=('image', 'annotation')):
         self.nifti_path_keys, self.out_keys = nifti_path_keys, out_keys
 
-    def parse(self, input_features):
+    def pre_process(self, input_features):
         _check_keys_(input_features=input_features, keys=self.nifti_path_keys)
         for nifti_path_key, out_key in zip(self.nifti_path_keys, self.out_keys):
             image_handle = sitk.ReadImage(input_features[nifti_path_key])
@@ -553,7 +556,7 @@ class DeleteKeys(ImageProcessor):
     def __init__(self, keys_to_delete=('primary_image_nifti',)):
         self.keys_to_delete = keys_to_delete
 
-    def parse(self, input_features):
+    def pre_process(self, input_features):
         _check_keys_(input_features=input_features, keys=self.keys_to_delete)
         for key in self.keys_to_delete:
             del input_features[key]
@@ -565,7 +568,7 @@ class NiftiToArray(ImageProcessor):
                  dtypes=('float32', 'int8')):
         self.nifti_keys, self.out_keys, self.dtypes = nifti_keys, out_keys, dtypes
 
-    def parse(self, input_features):
+    def pre_process(self, input_features):
         _check_keys_(input_features=input_features, keys=self.nifti_keys)
         for nifti_key, out_key, dtype in zip(self.nifti_keys, self.out_keys, self.dtypes):
             image_handle = input_features[nifti_key]
@@ -576,7 +579,7 @@ class NiftiToArray(ImageProcessor):
 
 
 class Add_Dose(ImageProcessor):
-    def parse(self, input_features):
+    def pre_process(self, input_features):
         image_path = input_features['image_path']
         dose_path = image_path.replace('Data', 'Dose')
         dose_handle = sitk.ReadImage(dose_path)
@@ -596,7 +599,7 @@ class Clip_Images_By_Extension(ImageProcessor):
     def __init__(self, extension=np.inf):
         self.extension = extension
 
-    def parse(self, input_features):
+    def pre_process(self, input_features):
         image = input_features['image']
         annotation = input_features['annotation']
         start, stop = get_start_stop(annotation, self.extension)
@@ -608,7 +611,7 @@ class Clip_Images_By_Extension(ImageProcessor):
 
 
 class Normalize_MRI(ImageProcessor):
-    def parse(self, input_features):
+    def pre_process(self, input_features):
         image_handle = sitk.GetImageFromArray(input_features['image'])
         image = input_features['image']
 
@@ -629,7 +632,7 @@ class Normalize_MRI(ImageProcessor):
 
 
 class N4BiasCorrection(ImageProcessor):
-    def parse(self, input_features):
+    def pre_process(self, input_features):
         image_handle = sitk.GetImageFromArray(input_features['image'])
         corrector = sitk.N4BiasFieldCorrectionImageFilter()
         corrector.SetMaximumNumberOfIterations([int(2) * 2])
@@ -652,10 +655,10 @@ class Split_Disease_Into_Cubes(ImageProcessor):
         self.max_voxels = max_voxels
         assert disease_annotation is not None, 'Provide an integer for what is disease'
 
-    def parse(self, input_features):
+    def pre_process(self, input_features):
         if 'bounding_boxes_{}'.format(self.disease_annotation) not in input_features:
             Add_Bounding_Box = Add_Bounding_Box_Indexes([self.disease_annotation], add_to_dictionary=False)
-            input_features = Add_Bounding_Box.parse(input_features)
+            input_features = Add_Bounding_Box.pre_process(input_features)
         if 'bounding_boxes_{}'.format(self.disease_annotation) in input_features:
             bounding_boxes = input_features['bounding_boxes_{}'.format(self.disease_annotation)]
             voxel_volumes = input_features['voxel_volumes_{}'.format(self.disease_annotation)]
@@ -722,7 +725,7 @@ class Distribute_into_3D(ImageProcessor):
         self.chop_ends = chop_ends
         self.desired_val = desired_val
 
-    def parse(self, input_features):
+    def pre_process(self, input_features):
         out_features = OrderedDict()
         start_chop = 0
         image_base = input_features['image']
@@ -771,7 +774,7 @@ class Distribute_into_3D(ImageProcessor):
 
 class Distribute_into_2D(ImageProcessor):
 
-    def parse(self, input_features):
+    def pre_process(self, input_features):
         out_features = OrderedDict()
         image = input_features['image']
         annotation = input_features['annotation']
@@ -793,7 +796,7 @@ class Distribute_into_2D(ImageProcessor):
 
 
 class NormalizeParotidMR(ImageProcessor):
-    def parse(self, input_features):
+    def pre_process(self, input_features):
         images = input_features['image']
         data = images.flatten()
         counts, bins = np.histogram(data, bins=1000)
@@ -829,7 +832,7 @@ class AddByValues(ImageProcessor):
         self.image_keys = image_keys
         self.values = values
 
-    def parse(self, input_features):
+    def pre_process(self, input_features):
         _check_keys_(input_features=input_features, keys=self.image_keys)
         for key, value in zip(self.image_keys, self.values):
             image_array = input_features[key]
@@ -849,7 +852,7 @@ class AddLiverKey(ImageProcessor):
         self.actions = actions
         self.out_keys = out_keys
 
-    def parse(self, input_features):
+    def pre_process(self, input_features):
         _check_keys_(input_features=input_features, keys=self.annotation_keys)
         for annotation_key, action, out_key in zip(self.annotation_keys, self.actions, self.out_keys):
             annotation = input_features[annotation_key]
@@ -869,7 +872,7 @@ class DistributeIntoRecurrenceCubes(ImageProcessor):
     """
     Highly specialized for the task of model prediction, likely won't be useful for others
     """
-    def parse(self, input_features):
+    def pre_process(self, input_features):
         out_features = OrderedDict()
         primary_array = input_features['primary_image']
         image_size = primary_array.shape
@@ -980,7 +983,7 @@ class DivideByValues(ImageProcessor):
         self.image_keys = image_keys
         self.values = values
 
-    def parse(self, input_features):
+    def pre_process(self, input_features):
         _check_keys_(input_features=input_features, keys=self.image_keys)
         for key, value in zip(self.image_keys, self.values):
             image_array = input_features[key]
@@ -1001,7 +1004,7 @@ class Threshold_Images(ImageProcessor):
         self.image_key = image_key
         self.divide = divide
 
-    def parse(self, image_features, *args, **kwargs):
+    def pre_process(self, image_features, *args, **kwargs):
         _check_keys_(input_features=image_features, keys=self.image_key)
         image = image_features[self.image_key]
         image[image < self.lower] = self.lower
@@ -1031,7 +1034,7 @@ class Normalize_to_annotation(ImageProcessor):
         self.image_key = image_key
         self.annotation_key = annotation_key
 
-    def parse(self, input_features):
+    def pre_process(self, input_features):
         _check_keys_(input_features=input_features, keys=(self.image_key, self.annotation_key))
         images = input_features[self.image_key]
         annotation = input_features[self.annotation_key]
@@ -1113,7 +1116,7 @@ class Box_Images(ImageProcessor):
         self.min_images, self.min_rows, self.min_cols = min_images, min_rows, min_cols
         self.image_key, self.annotation_key = image_key, annotation_key
 
-    def parse(self, input_features):
+    def pre_process(self, input_features):
         _check_keys_(input_features=input_features, keys=(self.image_key, self.annotation_key))
         annotation = input_features[self.annotation_key]
         image = input_features[self.image_key]
@@ -1129,7 +1132,7 @@ class Box_Images(ImageProcessor):
         for val in [1]:
             add_indexes = Add_Bounding_Box_Indexes([val], label_name='mask')
             input_features['mask'] = mask
-            add_indexes.parse(input_features)
+            add_indexes.pre_process(input_features)
             del input_features['mask']
             z_start, z_stop, r_start, r_stop, c_start, c_stop = add_bounding_box_to_dict(
                 input_features['bounding_boxes_{}'.format(val)][0], return_indexes=True)
@@ -1195,7 +1198,7 @@ class Add_Bounding_Box_Indexes(ImageProcessor):
         self.add_to_dictionary = add_to_dictionary
         self.label_name = label_name
 
-    def parse(self, input_features):
+    def pre_process(self, input_features):
         _check_keys_(input_features=input_features, keys=self.label_name)
         annotation_base = input_features[self.label_name]
         for val in self.wanted_vals_for_bbox:
