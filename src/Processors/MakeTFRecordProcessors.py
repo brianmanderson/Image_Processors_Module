@@ -369,14 +369,15 @@ class Combine_Annotations(ImageProcessor):
 
 
 class To_Categorical(ImageProcessor):
-    def __init__(self, num_classes=None, annotation_key='annotation'):
+    def __init__(self, num_classes=None, annotation_keys=('annotation',)):
         self.num_classes = num_classes
-        self.annotation_key = annotation_key
+        self.annotation_keys = annotation_keys
 
     def pre_process(self, input_features):
-        _check_keys_(input_features=input_features, keys=self.annotation_key)
-        input_features[self.annotation_key] = to_categorical(input_features[self.annotation_key], self.num_classes)
-        input_features['num_classes_{}'.format(self.annotation_key)] = self.num_classes
+        _check_keys_(input_features=input_features, keys=self.annotation_keys)
+        for key in self.annotation_keys:
+            input_features[key] = to_categorical(input_features[key], self.num_classes)
+            input_features['num_classes_{}'.format(key)] = self.num_classes
         return input_features
 
 
@@ -566,6 +567,19 @@ class ExpandDimensions(ImageProcessor):
         _check_keys_(input_features, self.image_keys)
         for key in self.image_keys:
             input_features[key] = np.expand_dims(input_features[key], axis=self.axis)
+        return input_features
+
+
+class RepeatChannel(ImageProcessor):
+    def __init__(self, num_repeats=3, axis=-1, image_keys=('image',)):
+        self.num_repeats = num_repeats
+        self.axis = axis
+        self.image_keys = image_keys
+
+    def pre_process(self, input_features):
+        for key in self.image_keys:
+            images = input_features[key]
+            input_features[key] = np.repeat(images, self.num_repeats, axis=self.axis)
         return input_features
 
 
@@ -1260,7 +1274,7 @@ class DivideByValues(ImageProcessor):
 
 
 class Threshold_Images(ImageProcessor):
-    def __init__(self, image_key='image', lower_bound=-np.inf, upper_bound=np.inf, divide=True):
+    def __init__(self, image_keys=('image',), lower_bound=-np.inf, upper_bound=np.inf, divide=True):
         """
         :param image_key: key for images in the image_features dictionary
         :param lower_bound: Lower bound to threshold images, normally -3.55 if Normalize_Images is used previously
@@ -1268,17 +1282,18 @@ class Threshold_Images(ImageProcessor):
         """
         self.lower = lower_bound
         self.upper = upper_bound
-        self.image_key = image_key
+        self.image_keys = image_keys
         self.divide = divide
 
     def pre_process(self, image_features, *args, **kwargs):
-        _check_keys_(input_features=image_features, keys=self.image_key)
-        image = image_features[self.image_key]
-        image[image < self.lower] = self.lower
-        image[image > self.upper] = self.upper
-        if self.divide:
-            image = image / (self.upper - self.lower)
-        image_features[self.image_key] = image
+        _check_keys_(input_features=image_features, keys=self.image_keys)
+        for key in self.image_keys:
+            image = image_features[key]
+            image[image < self.lower] = self.lower
+            image[image > self.upper] = self.upper
+            if self.divide:
+                image = image / (self.upper - self.lower)
+            image_features[key] = image
         return image_features
 
 
