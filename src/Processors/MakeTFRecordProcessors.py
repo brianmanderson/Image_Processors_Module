@@ -640,7 +640,7 @@ class Ensure_Image_Proportions(ImageProcessor):
             if str(pred.dtype).find('int') != -1:
                 out_dtype = 'int'
             else:
-                out_dtype = images.dtype
+                out_dtype = pred.dtype
             pred = pred.astype('float32')
             if self.pad:
                 pred = [np.resize(i, new_shape=(self.pre_pad_rows, self.pre_pad_cols, pred.shape[-1])) for i in pred]
@@ -651,6 +651,23 @@ class Ensure_Image_Proportions(ImageProcessor):
             input_features[key] = pred.astype(out_dtype)
         return input_features
 
+
+class VGGNormalize(ImageProcessor):
+    def __init__(self, image_keys=('image',)):
+        """
+        :param image_keys: tuple of image keys
+        """
+        self.image_keys = image_keys
+
+    def pre_process(self, input_features):
+        _check_keys_(input_features=input_features, keys=self.image_keys)
+        for key in self.image_keys:
+            images = input_features[key]
+            images[..., 0] -= 123.68
+            images[..., 1] -= 116.78
+            images[..., 2] -= 103.94
+            input_features[key] = images
+        return input_features
 
 class ExpandDimensions(ImageProcessor):
     def __init__(self, axis=-1, image_keys=('image', 'annotation')):
