@@ -610,6 +610,22 @@ class CastData(ImageProcessor):
         return input_features
 
 
+class ConvertArrayToHandle(ImageProcessor):
+    def __init__(self, array_keys=('gradients',), out_keys=('gradients_handle',)):
+        """
+        :param array_keys: tuple of array keys in dictionary
+        :param out_keys: tuple of string names for arrays to be named
+        """
+        self.array_keys = array_keys
+        self.out_keys = out_keys
+
+    def pre_process(self, input_features):
+        _check_keys_(input_features=input_features, keys=self.array_keys)
+        for array_key, out_key in zip(self.array_keys, self.out_keys):
+            input_features[out_key] = sitk.GetImageFromArray(input_features[array_key])
+        return input_features
+
+
 class Add_Images_And_Annotations(ImageProcessor):
     def __init__(self, nifti_path_keys=('image_path', 'annotation_path'), out_keys=('image', 'annotation'),
                  dtypes=('float32', 'int8')):
