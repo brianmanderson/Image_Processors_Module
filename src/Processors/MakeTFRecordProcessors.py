@@ -2178,7 +2178,8 @@ def expand_box_indexes(z_start, z_stop, r_start, r_stop, c_start, c_stop, annota
 class Box_Images(ImageProcessor):
     def __init__(self, image_key='image', annotation_key='annotation', wanted_vals_for_bbox=None,
                  bounding_box_expansion=(5, 10, 10), power_val_z=1, power_val_r=1,
-                 power_val_c=1, min_images=None, min_rows=None, min_cols=None):
+                 power_val_c=1, min_images=None, min_rows=None, min_cols=None,
+                 post_process_keys=('image', 'annotation', 'prediction')):
         """
         :param image_key: key which corresponds to an image to be normalized
         :param annotation_key: key which corresponds to an annotation image used for normalization
@@ -2191,12 +2192,13 @@ class Box_Images(ImageProcessor):
         :param min_rows:
         :param min_cols:
         """
-        assert type(wanted_vals_for_bbox) is list, 'Provide a list for bboxes'
+        assert type(wanted_vals_for_bbox) in [list, tuple], 'Provide a list for bboxes'
         self.wanted_vals_for_bbox = wanted_vals_for_bbox
         self.bounding_box_expansion = bounding_box_expansion
         self.power_val_z, self.power_val_r, self.power_val_c = power_val_z, power_val_r, power_val_c
         self.min_images, self.min_rows, self.min_cols = min_images, min_rows, min_cols
         self.image_key, self.annotation_key = image_key, annotation_key
+        self.post_process_keys = post_process_keys
 
     def pre_process(self, input_features):
         _check_keys_(input_features=input_features, keys=(self.image_key, self.annotation_key))
@@ -2267,6 +2269,28 @@ class Box_Images(ImageProcessor):
                 annotation_cube[..., 0] = 1 - np.sum(annotation_cube[..., 1:], axis=-1)
             input_features[self.annotation_key] = annotation_cube
             input_features[self.image_key] = image_cube
+            input_features['z_r_c_start'] = [z_start, r_start, c_start]
+            input_features['pads'] = [pads[i][0] for i in range(3)]
+            input_features['og_shape'] = image.shape
+        return input_features
+
+    def post_process(self, input_features):
+        _check_keys_(input_features=input_features, keys=self.post_process_keys)
+        for key in self.post_process_keys:
+            image = input_features[key]
+            pads = input_features['pads']
+            image = image[pads[0]:, pads[1]:, pads[2]:]
+            pads = [[i, 0] for i in input_features['z_r_c_start']]
+            if len(image.shape) > 3:
+                pads += [[0, 0]]
+            image = np.pad(image, pads, constant_values=np.min(image))
+            og_shape = input_features['og_shape']
+            im_shape = image.shape
+            pads = [[0, og_shape[0] - im_shape[0]], [0, og_shape[1] - im_shape[1]], [0, og_shape[2] - im_shape[2]]]
+            if len(image.shape) > 3:
+                pads += [[0, 0]]
+            image = np.pad(image, pads, constant_values=np.min(image))
+            input_features[key] = image
         return input_features
 
 
