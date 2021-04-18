@@ -406,7 +406,7 @@ class SmoothingPredictionRecursiveGaussian(ImageProcessor):
 
 
 class Iterate_Overlap(ImageProcessor):
-    def __init__(self, on_liver_lobes=True, max_iterations=10, prediction_key='pred', ground_truth_key='annotations',
+    def __init__(self, on_liver_lobes=True, max_iterations=10, prediction_key='prediction', ground_truth_key='annotations',
                  dicom_handle_key='primary_handle'):
         self.max_iterations = max_iterations
         self.on_liver_lobes = on_liver_lobes
@@ -574,6 +574,15 @@ class Resample_LiTs(ImageProcessor):
             input_features['image'] = sitk.GetArrayFromImage(image_handle)
             input_features['annotation'] = sitk.GetArrayFromImage(annotation_handle)
             input_features['spacing'] = np.asarray(annotation_handle.GetSpacing(), dtype='float32')
+        return input_features
+
+
+class AddSpacing(ImageProcessor):
+    def __init__(self, spacing_handle_key='primary_handle'):
+        self.spacing_handle_key = spacing_handle_key
+
+    def pre_process(self, input_features):
+        input_features['spacing'] = input_features[self.spacing_handle_key].GetSpacing()
         return input_features
 
 
@@ -987,6 +996,26 @@ def remove_non_liver(annotations, threshold=0.5, max_volume=9999999.0, min_volum
                 labels[labels > 0] = 1
                 annotations[slice_index] = labels
     return annotations
+
+
+class SqueezeDimensions(ImageProcessor):
+    def __init__(self, image_keys=None, post_prediction_keys=None):
+        self.post_prediction_keys = post_prediction_keys
+        self.image_keys = image_keys
+
+    def pre_process(self, input_features):
+        if self.image_keys:
+            _check_keys_(input_features, self.image_keys)
+            for key in self.image_keys:
+                input_features[key] = np.squeeze(input_features[key])
+        return input_features
+
+    def post_process(self, input_features):
+        if self.post_prediction_keys:
+            _check_keys_(input_features, self.post_prediction_keys)
+            for key in self.post_prediction_keys:
+                input_features[key] = np.squeeze(input_features[key])
+        return input_features
 
 
 class ExpandDimensions(ImageProcessor):
@@ -2031,7 +2060,7 @@ class MinimumVolumeandAreaPrediction(ImageProcessor):
 
 
 class Threshold_and_Expand(ImageProcessor):
-    def __init__(self, seed_threshold_value=None, lower_threshold_value=None, prediction_key='pred'):
+    def __init__(self, seed_threshold_value=None, lower_threshold_value=None, prediction_key='prediction'):
         self.seed_threshold_value = seed_threshold_value
         self.Connected_Component_Filter = sitk.ConnectedComponentImageFilter()
         self.RelabelComponent = sitk.RelabelComponentImageFilter()
