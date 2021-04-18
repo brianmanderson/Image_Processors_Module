@@ -638,6 +638,7 @@ class Resampler(ImageProcessor):
                     output_spacing.append(self.desired_output_spacing[index])
             output_spacing = tuple(output_spacing)
             input_features['{}_original_spacing'.format(key)] = np.asarray(input_spacing, dtype='float32')
+            input_features['{}_output_spacing'.format(key)] = np.asarray(output_spacing, dtype='float32')
             if output_spacing != input_spacing:
                 if self.verbose:
                     print('Resampling {} to {}'.format(input_spacing, output_spacing))
@@ -662,7 +663,6 @@ class Resampler(ImageProcessor):
                     stacked[..., 0] = 1 - np.sum(stacked[..., 1:], axis=-1)
                     input_features[key] = stacked
                     input_features['{}_spacing'.format(key)] = np.asarray(self.desired_output_spacing, dtype='float32')
-        input_features['spacing'] = np.asarray(self.desired_output_spacing, dtype='float32')
         return input_features
 
     def post_process(self, input_features):
@@ -675,27 +675,15 @@ class Resampler(ImageProcessor):
         for spacing_key, key, interpolator in zip(self.post_process_original_spacing_keys,
                                                   self.post_process_resample_keys,
                                                   self.post_process_interpolators):
-            desired_output_spacing = tuple([float(i) for i in input_features['{}_original_spacing'.format(spacing_key)]])
+            output_spacing = tuple([float(i) for i in input_features['{}_original_spacing'.format(spacing_key)]])
             image_handle = input_features[key]
-            input_spacing = tuple([float(i) for i in input_features['{}_spacing'.format(key)]])
-            image_array = None
-            if type(image_handle) is np.ndarray:
-                image_array = image_handle
-                image_handle = sitk.GetImageFromArray(image_handle)
-                image_handle.SetSpacing(input_spacing)
-
-            output_spacing = []
-            for index in range(3):
-                if desired_output_spacing[index] is None:
-                    if input_spacing[index] < 0.5 and self.make_512:
-                        spacing = input_spacing[index] * 2
-                    else:
-                        spacing = input_spacing[index]
-                    output_spacing.append(spacing)
-                else:
-                    output_spacing.append(desired_output_spacing[index])
-            output_spacing = tuple(output_spacing)
+            input_spacing = tuple([float(i) for i in input_features['{}_output_spacing'.format(spacing_key)]])
             if output_spacing != input_spacing:
+                image_array = None
+                if type(image_handle) is np.ndarray:
+                    image_array = image_handle
+                    image_handle = sitk.GetImageFromArray(image_handle)
+                    image_handle.SetSpacing(input_spacing)
                 if self.verbose:
                     print('Resampling {} to {}'.format(input_spacing, output_spacing))
                 if image_array is None:
@@ -2314,6 +2302,16 @@ class Box_Images(ImageProcessor):
                 pads += [[0, 0]]
             image = np.pad(image, pads, constant_values=np.min(image))
             og_shape = input_features['og_shape']
+            im_shape = image.shape
+            if im_shape[0] > og_shape[0]:
+                dif = og_shape[0] - im_shape[0]
+                image = image[:dif]
+            if im_shape[1] > og_shape[1]:
+                dif = og_shape[1] - im_shape[1]
+                image = image[:, :dif]
+            if im_shape[2] > og_shape[2]:
+                dif = og_shape[2] - im_shape[2]
+                image = image[:, :, :dif]
             im_shape = image.shape
             pads = [[0, og_shape[0] - im_shape[0]], [0, og_shape[1] - im_shape[1]], [0, og_shape[2] - im_shape[2]]]
             if len(image.shape) > 3:
