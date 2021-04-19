@@ -524,10 +524,13 @@ class Iterate_Overlap(ImageProcessor):
         pred[min_z:max_z, min_r:max_r, min_c:max_c] = output
         return pred
 
+    def pre_process(self, input_features):
+        self.dicom_handle = input_features[self.dicom_handle_key]
+
     def post_process(self, input_features):
+        self.dicom_handle = input_features[self.dicom_handle_key]
         pred = input_features[self.prediction_key]
         ground_truth = input_features[self.ground_truth_key]
-        self.dicom_handle = input_features[self.dicom_handle_key]
         pred = self.iterate_annotations(pred, ground_truth, spacing=list(self.dicom_handle.GetSpacing()), z_mult=1)
         input_features[self.prediction_key] = pred
         return input_features
@@ -535,11 +538,11 @@ class Iterate_Overlap(ImageProcessor):
 
 class Rename_Lung_Voxels_Ground_Glass(Iterate_Overlap):
     def post_process(self, input_features):
+        self.dicom_handle = input_features[self.dicom_handle_key]
         pred = input_features[self.prediction_key]
-        dicom_handle = input_features[self.dicom_handle_key]
         mask = np.sum(pred[..., 1:], axis=-1)
         lungs = np.stack([mask, mask], axis=-1)
-        lungs = self.iterate_annotations(lungs, mask, spacing=list(dicom_handle.GetSpacing()), z_mult=1)
+        lungs = self.iterate_annotations(lungs, mask, spacing=list(self.dicom_handle.GetSpacing()), z_mult=1)
         lungs = lungs[..., 1]
         pred[lungs == 0] = 0
         pred[..., 2] = lungs # Just put lungs in as entirety
@@ -705,6 +708,21 @@ class Resampler(ImageProcessor):
                     stacked = np.concatenate(output, axis=-1)
                     stacked[..., 0] = 1 - np.sum(stacked[..., 1:], axis=-1)
                     input_features[key] = stacked
+        return input_features
+
+
+class CreateTupleFromKeys(ImageProcessor):
+    def __init__(self, image_keys=('image', 'annotation'), output_key='combined'):
+        """
+        :param image_keys: tuple of image keys
+        :param output_key: key for output
+        """
+        self.image_keys = image_keys
+        self.output_key = output_key
+
+    def pre_process(self, input_features):
+        _check_keys_(input_features=input_features, keys=self.image_keys)
+        input_features[self.output_key] = tuple([input_features[i] for i in self.image_keys])
         return input_features
 
 
@@ -1753,7 +1771,7 @@ def createseeds(predictionimage, seed_value):
 
 class Threshold_and_Expand_New(ImageProcessor):
     def __init__(self, seed_threshold_value=None, lower_threshold_value=None, prediction_key='prediction',
-                 ground_truth_key='annotation'):
+                 ground_truth_key='annotation', dicom_handle_key='primary_handle'):
         self.seed_threshold_value = seed_threshold_value
         self.Connected_Component_Filter = sitk.ConnectedComponentImageFilter()
         self.RelabelComponent = sitk.RelabelComponentImageFilter()
@@ -1764,6 +1782,7 @@ class Threshold_and_Expand_New(ImageProcessor):
         self.prediction_key = prediction_key
         self.ground_truth_key = ground_truth_key
         self.Iterate_Lobe_Annotations_Class = Iterate_Lobe_Annotations()
+        self.dicom_handle_key = dicom_handle_key
 
     def post_process(self, input_features):
         pred = input_features[self.prediction_key]
@@ -1780,7 +1799,7 @@ class Threshold_and_Expand_New(ImageProcessor):
         out_prediction[summed_image > 1] = 0
         out_prediction = self.Iterate_Lobe_Annotations_Class.iterate_annotations(
             out_prediction, ground_truth > 0,
-            spacing=self.dicom_handle.GetSpacing(),
+            spacing=input_features[self.dicom_handle_key].GetSpacing(),
             max_iteration=10, reduce2D=False)
         input_features[self.prediction_key] = out_prediction
         return input_features
@@ -2136,33 +2155,15 @@ class Normalize_to_annotation(ImageProcessor):
     def pre_process(self, input_features):
         _check_keys_(input_features=input_features, keys=(self.image_key, self.annotation_key))
         images = input_features[self.image_key]
-        annotation = input_features[self.annotation_key]
-        if len(annotation.shape) == 3:
-            mask = np.zeros(annotation.shape)
-            for value in self.annotation_value_list:
-                mask += annotation == value
-        else:
-            mask = np.zeros(annotation.shape[:-1])
-            for value in self.annotation_value_list:
-                mask += annotation[..., value]
-        data = images[mask > 0].flatten()
-        if self.lower_percentile is not None and self.upper_percentile is not None:
-            lower_bound = np.percentile(data, 25)
-            upper_bound = np.percentile(data, 75)
-            data = data[np.where((data >= lower_bound) & (data <= upper_bound))]
-            mean_val, std_val = np.mean(data), np.std(data)
-            images = (images - mean_val) / std_val
-            input_features[self.image_key] = images
-            return input_features
+        liver = input_features[self.annotation_key]
+        data = images[liver == 1].flatten()
         counts, bins = np.histogram(data, bins=100)
-        bins = bins[1:-2]
-        counts = counts[1:-1]
+        bins = bins[:-1]
         count_index = np.where(counts == np.max(counts))[0][-1]
         peak = bins[count_index]
         data_reduced = data[np.where((data > peak - 150) & (data < peak + 150))]
         counts, bins = np.histogram(data_reduced, bins=1000)
-        bins = bins[1:-2]
-        counts = counts[1:-1]
+        bins = bins[:-1]
         count_index = np.where(counts == np.max(counts))[0][-1]
         half_counts = counts - np.max(counts) // 2
         half_upper = np.abs(half_counts[count_index + 1:])
@@ -2196,7 +2197,7 @@ class Box_Images(ImageProcessor):
     def __init__(self, image_key='image', annotation_key='annotation', wanted_vals_for_bbox=None,
                  bounding_box_expansion=(5, 10, 10), power_val_z=1, power_val_r=1,
                  power_val_c=1, min_images=None, min_rows=None, min_cols=None,
-                 post_process_keys=('image', 'annotation', 'prediction')):
+                 post_process_keys=('image', 'annotation', 'prediction'), pad_value=None):
         """
         :param image_key: key which corresponds to an image to be normalized
         :param annotation_key: key which corresponds to an annotation image used for normalization
@@ -2216,6 +2217,7 @@ class Box_Images(ImageProcessor):
         self.min_images, self.min_rows, self.min_cols = min_images, min_rows, min_cols
         self.image_key, self.annotation_key = image_key, annotation_key
         self.post_process_keys = post_process_keys
+        self.pad_value = pad_value
 
     def pre_process(self, input_features):
         _check_keys_(input_features=input_features, keys=(self.image_key, self.annotation_key))
@@ -2278,9 +2280,14 @@ class Box_Images(ImageProcessor):
             img_shape = image_cube.shape
             pads = [min_images - img_shape[0], min_rows - img_shape[1], min_cols - img_shape[2]]
             pads = [[max([0, floor(i / 2)]), max([0, ceil(i / 2)])] for i in pads]
-            image_cube = np.pad(image_cube, pads, constant_values=np.min(image_cube))
+            if self.pad_value is not None:
+                pad_value = self.pad_value
+            else:
+                pad_value = np.min(image_cube)
+            image_cube = np.pad(image_cube, pads, constant_values=pad_value)
             if len(annotation.shape) > 3:
                 pads += [[0, 0]]
+
             annotation_cube = np.pad(annotation_cube, pads)
             if len(annotation.shape) > 3:
                 annotation_cube[..., 0] = 1 - np.sum(annotation_cube[..., 1:], axis=-1)
@@ -2296,9 +2303,9 @@ class Box_Images(ImageProcessor):
         for key in self.post_process_keys:
             image = input_features[key]
             pads = input_features['pads']
-            image = image[pads[0]:, pads[1]:, pads[2]:]
+            image = image[pads[0]:, pads[1]:, pads[2]:, ...]
             pads = [[i, 0] for i in input_features['z_r_c_start']]
-            if len(image.shape) > 3:
+            while len(image.shape) > len(pads):
                 pads += [[0, 0]]
             image = np.pad(image, pads, constant_values=np.min(image))
             og_shape = input_features['og_shape']
