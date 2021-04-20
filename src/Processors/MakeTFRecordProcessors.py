@@ -653,6 +653,7 @@ class Resampler(ImageProcessor):
             output_spacing = tuple(output_spacing)
             input_features['{}_original_spacing'.format(key)] = np.asarray(input_spacing, dtype='float32')
             input_features['{}_output_spacing'.format(key)] = np.asarray(output_spacing, dtype='float32')
+            input_features['output_spacing'] = np.asarray(output_spacing, dtype='float32')
             if output_spacing != input_spacing:
                 if self.verbose:
                     print('Resampling {} to {}'.format(input_spacing, output_spacing))
@@ -689,32 +690,50 @@ class Resampler(ImageProcessor):
         for spacing_key, key, interpolator in zip(self.post_process_original_spacing_keys,
                                                   self.post_process_resample_keys,
                                                   self.post_process_interpolators):
-            output_spacing = tuple([float(i) for i in input_features['{}_original_spacing'.format(spacing_key)]])
+            original_handle = input_features[spacing_key]
+            if type(original_handle) is sitk.Image:
+                output_spacing = original_handle.GetSpacing()
+                ref_handle = original_handle
+            else:
+                output_spacing = tuple([float(i) for i in input_features['{}_original_spacing'.format(spacing_key)]])
+                ref_handle = None
             image_handle = input_features[key]
-            input_spacing = tuple([float(i) for i in input_features['{}_output_spacing'.format(spacing_key)]])
+            input_spacing = tuple([float(i) for i in input_features['output_spacing']])
             if output_spacing != input_spacing:
                 image_array = None
                 if type(image_handle) is np.ndarray:
                     image_array = image_handle
-                    image_handle = sitk.GetImageFromArray(image_handle)
-                    image_handle.SetSpacing(input_spacing)
+                    image_shape = image_handle.shape
+                else:
+                    image_shape = image_handle.GetSize()
                 if self.verbose:
                     print('Resampling {} to {}'.format(input_spacing, output_spacing))
-                if image_array is None:
-                    image_array = sitk.GetArrayFromImage(image_handle)
-                if len(image_array.shape) == 3:
+                if len(image_shape) == 3:
+                    if type(image_handle) is np.ndarray:
+                        image_handle = sitk.GetImageFromArray(image_handle)
+                        image_handle.SetSpacing(input_spacing)
+                    if ref_handle is not None:
+                        image_handle.SetDirection(ref_handle.GetDirection())
+                        image_handle.SetOrigin(ref_handle.GetOrigin())
                     image_handle = resampler.resample_image(input_image_handle=image_handle,
                                                             output_spacing=output_spacing,
-                                                            interpolator=interpolator)
+                                                            interpolator=interpolator,
+                                                            ref_resampling_handle=ref_handle)
                     input_features[key] = sitk.GetArrayFromImage(image_handle)
                 else:
+                    if image_array is None:
+                        image_array = sitk.GetArrayFromImage(image_handle)
                     output = []
                     for i in range(image_array.shape[-1]):
                         reduced_handle = sitk.GetImageFromArray(image_array[..., i])
                         reduced_handle.SetSpacing(input_spacing)
+                        if ref_handle is not None:
+                            reduced_handle.SetDirection(ref_handle.GetDirection())
+                            reduced_handle.SetOrigin(ref_handle.GetOrigin())
                         resampled_handle = resampler.resample_image(input_image_handle=reduced_handle,
                                                                     output_spacing=output_spacing,
-                                                                    interpolator=interpolator)
+                                                                    interpolator=interpolator,
+                                                                    ref_resampling_handle=ref_handle)
                         output.append(sitk.GetArrayFromImage(resampled_handle)[..., None])
                     stacked = np.concatenate(output, axis=-1)
                     stacked[..., 0] = 1 - np.sum(stacked[..., 1:], axis=-1)
