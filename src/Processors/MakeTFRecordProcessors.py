@@ -908,7 +908,7 @@ class GetSeedPoints(object):
         return all_centroids
 
 
-class GrowFromSeeds(object):
+class GrowFromSeedPoints(object):
     def __init__(self):
         self.Connected_Component_Filter = sitk.ConnectedComponentImageFilter()
         self.RelabelComponent = sitk.RelabelComponentImageFilter()
@@ -918,7 +918,7 @@ class GrowFromSeeds(object):
         self.stats = sitk.LabelShapeStatisticsImageFilter()
         self.Connected_Threshold.SetUpper(2)
 
-    def grow_from_seeds(self, seed_points, input_handle):
+    def grow_from_seed_points(self, seed_points, input_handle):
         self.Connected_Threshold.SetSeedList(seed_points)
         threshold_prediction = self.Connected_Threshold.Execute(sitk.Cast(input_handle, sitk.sitkFloat32))
         return threshold_prediction
@@ -929,7 +929,7 @@ class CombineLungLobes(ImageProcessor):
         self.prediction_key = prediction_key
         self.dicom_handle_key = dicom_handle_key
         self.seed_finder = GetSeedPoints()
-        self.seed_grower = GrowFromSeeds()
+        self.seed_grower = GrowFromSeedPoints()
 
     def pre_process(self, input_features):
         _check_keys_(input_features=input_features, keys=(self.prediction_key,))
@@ -946,7 +946,8 @@ class CombineLungLobes(ImageProcessor):
         combined_lungs = left_lung + right_lung
         combined_lungs[combined_lungs > 0] = 1
         seeds = self.seed_finder.get_seed_points(sitk.GetImageFromArray(combined_lungs))
-        grown_lungs = self.seed_grower.grow_from_seeds(seed_points=seeds, input_handle=sitk.GetImageFromArray(lungs))
+        grown_lungs = self.seed_grower.grow_from_seed_points(seed_points=seeds,
+                                                             input_handle=sitk.GetImageFromArray(lungs))
         pred[..., -1] = sitk.GetArrayFromImage(grown_lungs)
         input_features[self.prediction_key] = pred
         return input_features
