@@ -580,6 +580,17 @@ class Resample_LiTs(ImageProcessor):
         return input_features
 
 
+class DeepCopyKey(ImageProcessor):
+    def __init__(self, from_keys=('annotation',), to_keys=('annotation_original',)):
+        self.from_keys, self.to_keys = from_keys, to_keys
+
+    def pre_process(self, input_features):
+        _check_keys_(input_features=input_features, keys=self.from_keys)
+        for from_key, to_key in zip(self.from_keys, self.to_keys):
+            input_features[to_key] = copy.deepcopy(input_features[from_key])
+        return input_features
+
+
 class AddSpacing(ImageProcessor):
     def __init__(self, spacing_handle_key='primary_handle'):
         self.spacing_handle_key = spacing_handle_key
@@ -1110,9 +1121,9 @@ class SqueezeDimensions(ImageProcessor):
 
 
 class ExpandDimensions(ImageProcessor):
-    def __init__(self, axis=-1, image_keys=('image', 'annotation')):
-        self.axis = axis
+    def __init__(self, image_keys=('image', 'annotation'), axis=-1):
         self.image_keys = image_keys
+        self.axis = axis
 
     def pre_process(self, input_features):
         _check_keys_(input_features, self.image_keys)
