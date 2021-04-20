@@ -934,7 +934,7 @@ class CombineLungLobes(ImageProcessor):
     def pre_process(self, input_features):
         _check_keys_(input_features=input_features, keys=(self.prediction_key,))
         pred = input_features[self.prediction_key]
-        lungs = np.sum(pred[..., 0:], axis=-1)
+        lungs = np.sum(pred[..., 1:], axis=-1)
         left_lung = copy.deepcopy(lungs)
         right_lung = copy.deepcopy(lungs)
         left_lung[:, :, :left_lung.shape[2]//2] = 0
@@ -948,7 +948,9 @@ class CombineLungLobes(ImageProcessor):
         seeds = self.seed_finder.get_seed_points(sitk.GetImageFromArray(combined_lungs))
         grown_lungs = self.seed_grower.grow_from_seed_points(seed_points=seeds,
                                                              input_handle=sitk.GetImageFromArray(lungs))
-        pred[..., -1] = sitk.GetArrayFromImage(grown_lungs)
+        grown_lungs = sitk.GetArrayFromImage(grown_lungs)
+        pred[grown_lungs == 0] = 0
+        pred[..., -1] = grown_lungs
         input_features[self.prediction_key] = pred
         return input_features
 
