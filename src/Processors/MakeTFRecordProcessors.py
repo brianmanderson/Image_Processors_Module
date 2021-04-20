@@ -894,6 +894,90 @@ class Threshold_Prediction(ImageProcessor):
         return input_features
 
 
+class GetSeedPoints(object):
+    def __init__(self):
+        self.Connected_Component_Filter = sitk.ConnectedComponentImageFilter()
+        self.stats = sitk.LabelShapeStatisticsImageFilter()
+
+    def get_seed_points(self, input_handle):
+        connected_image = self.Connected_Component_Filter.Execute(input_handle)
+        self.stats.Execute(connected_image)
+        labels = [l for l in self.stats.GetLabels()]
+        all_centroids = [input_handle.TransformPhysicalPointToIndex(self.stats.GetCentroid(l))
+                         for l in labels]
+        return all_centroids
+
+
+class GrowFromSeeds(object):
+    def __init__(self):
+        self.Connected_Component_Filter = sitk.ConnectedComponentImageFilter()
+        self.RelabelComponent = sitk.RelabelComponentImageFilter()
+        self.Connected_Threshold = sitk.ConnectedThresholdImageFilter()
+        self.Connected_Threshold.SetUpper(2)
+        self.Connected_Threshold.SetLower(0.5)
+        self.stats = sitk.LabelShapeStatisticsImageFilter()
+        self.Connected_Threshold.SetUpper(2)
+
+    def grow_from_seeds(self, seed_points, input_handle):
+        self.Connected_Threshold.SetSeedList(seed_points)
+        threshold_prediction = self.Connected_Threshold.Execute(sitk.Cast(input_handle, sitk.sitkFloat32))
+        return threshold_prediction
+
+
+class CombineLungLobes(ImageProcessor):
+    def __init__(self, prediction_key='prediction', dicom_handle_key='primary_handle'):
+        self.prediction_key = prediction_key
+        self.dicom_handle_key = dicom_handle_key
+        self.seed_finder = GetSeedPoints()
+        self.seed_grower = GrowFromSeeds()
+
+    def pre_process(self, input_features):
+        _check_keys_(input_features=input_features, keys=(self.prediction_key,))
+        pred = input_features[self.prediction_key]
+        lungs = pred[..., -1]
+        left_lung = copy.deepcopy(lungs)
+        right_lung = copy.deepcopy(lungs)
+        left_lung[:, :, :left_lung.shape[2]//2] = 0
+        right_lung[:, :, right_lung.shape[2]//2:] = 0
+        left_lung = remove_non_liver(left_lung, threshold=0.5, do_3D=True, min_volume=0, do_2D=False,
+                                     max_volume=np.inf, spacing=input_features[self.dicom_handle_key].GetSpacing())
+        right_lung = remove_non_liver(right_lung, threshold=0.5, do_3D=True, min_volume=0, do_2D=False,
+                                      max_volume=np.inf, spacing=input_features[self.dicom_handle_key].GetSpacing())
+        combined_lungs = left_lung + right_lung
+        combined_lungs[combined_lungs > 0] = 1
+        seeds = self.seed_finder.get_seed_points(sitk.GetImageFromArray(combined_lungs))
+        grown_lungs = self.seed_grower.grow_from_seeds(seed_points=seeds, input_handle=sitk.GetImageFromArray(lungs))
+        pred[..., -1] = sitk.GetArrayFromImage(grown_lungs)
+        input_features[self.prediction_key] = pred
+        return input_features
+
+
+class RemoveDisconnectedStructures(ImageProcessor):
+    def __init__(self, single_structure=True, perform_2D=False, min_volume=0.0, image_keys=('prediction',),
+                 indexes=None, max_volume=np.inf, dicom_handle_key='primary_handle'):
+        self.single_structure = single_structure
+        self.perform_2D = perform_2D
+        self.min_volume, self.max_volume = min_volume, max_volume
+        self.image_keys = image_keys
+        self.dicom_handle_key = dicom_handle_key
+        self.indexes = indexes
+
+    def pre_process(self, input_features):
+        _check_keys_(input_features=input_features, keys=self.image_keys + (self.dicom_handle_key,))
+        for key in self.image_keys:
+            pred = input_features[key]
+            if self.indexes is None:
+                indexes = range(1, pred.shape[-1])
+            else:
+                indexes = self.indexes
+            for i in indexes:
+                pred[..., i] = remove_non_liver(pred[..., i], threshold=0.5, do_3D=self.single_structure,
+                                                min_volume=self.min_volume, do_2D=self.perform_2D,
+                                                max_volume=self.max_volume,
+                                                spacing=input_features[self.dicom_handle_key].GetSpacing())
+        return input_features
+
+
 def variable_remove_non_liver(annotations, threshold=0.5, is_liver=False):
     image_size_1 = annotations.shape[1]
     image_size_2 = annotations.shape[2]
