@@ -775,17 +775,15 @@ def image_resize(image, width=None, height=None, inter=cv2.INTER_AREA):
 
 
 class ArgMax(ImageProcessor):
-    def __init__(self, image_keys=('prediction',)):
+    def __init__(self, image_keys=('prediction',), axis=-1):
         self.image_keys = image_keys
+        self.axis = axis
 
     def pre_process(self, input_features):
         _check_keys_(input_features=input_features, keys=self.image_keys)
         for key in self.image_keys:
             pred = input_features[key]
-            out_classes = pred.shape[-1]
-            pred = np.argmax(pred, axis=-1)
-            input_features[key] = pred
-            pred = to_categorical(pred, out_classes)
+            pred = np.argmax(pred, axis=self.axis)
             input_features[key] = pred
         return input_features
 
