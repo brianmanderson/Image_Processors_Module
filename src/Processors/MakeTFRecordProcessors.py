@@ -537,7 +537,7 @@ class Iterate_Overlap(ImageProcessor):
 
 
 class Rename_Lung_Voxels_Ground_Glass(Iterate_Overlap):
-    def post_process(self, input_features):
+    def pre_process(self, input_features):
         self.dicom_handle = input_features[self.dicom_handle_key]
         pred = input_features[self.prediction_key]
         mask = np.sum(pred[..., 1:], axis=-1)
@@ -882,7 +882,7 @@ class Threshold_Prediction(ImageProcessor):
         self.single_structure = single_structure
         self.prediction_keys = prediction_keys
 
-    def post_process(self, input_features):
+    def pre_process(self, input_features):
         _check_keys_(input_features=input_features, keys=self.prediction_keys)
         for key in self.prediction_keys:
             pred = input_features[key]
@@ -1784,7 +1784,7 @@ class Threshold_and_Expand_New(ImageProcessor):
         self.Iterate_Lobe_Annotations_Class = Iterate_Lobe_Annotations()
         self.dicom_handle_key = dicom_handle_key
 
-    def post_process(self, input_features):
+    def pre_process(self, input_features):
         pred = input_features[self.prediction_key]
         ground_truth = input_features[self.ground_truth_key]
         out_prediction = np.zeros(pred.shape).astype('float32')
@@ -1991,7 +1991,7 @@ class Fill_Binary_Holes(ImageProcessor):
         self.prediction_key = prediction_key
         self.dicom_handle_key = dicom_handle_key
 
-    def post_process(self, input_features):
+    def pre_process(self, input_features):
         pred = input_features[self.prediction_key]
         dicom_handle = input_features[self.dicom_handle_key]
         for class_num in range(1, pred.shape[-1]):
@@ -2027,7 +2027,7 @@ class MinimumVolumeandAreaPrediction(ImageProcessor):
         self.prediction_key = prediction_key
         self.dicom_handle_key = dicom_handle_key
 
-    def post_process(self, input_features):
+    def pre_process(self, input_features):
         pred = input_features[self.prediction_key]
         dicom_handle = input_features[self.dicom_handle_key]
         for axis in self.pred_axis:
@@ -2077,7 +2077,7 @@ class Threshold_and_Expand(ImageProcessor):
         self.Connected_Threshold.SetUpper(2)
         self.prediction_key = prediction_key
 
-    def post_process(self, input_features):
+    def pre_process(self, input_features):
         pred = input_features[self.prediction_key]
         for i in range(1, pred.shape[-1]):
             temp_pred = pred[..., i]
