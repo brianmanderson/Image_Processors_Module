@@ -934,7 +934,7 @@ class CombineLungLobes(ImageProcessor):
     def pre_process(self, input_features):
         _check_keys_(input_features=input_features, keys=(self.prediction_key,))
         pred = input_features[self.prediction_key]
-        lungs = pred[..., -1]
+        lungs = np.sum(pred[..., 0:], axis=-1)
         left_lung = copy.deepcopy(lungs)
         right_lung = copy.deepcopy(lungs)
         left_lung[:, :, :left_lung.shape[2]//2] = 0
