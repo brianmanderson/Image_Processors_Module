@@ -2236,16 +2236,16 @@ class Threshold_Images(ImageProcessor):
         self.image_keys = image_keys
         self.divide = divide
 
-    def pre_process(self, image_features, *args, **kwargs):
-        _check_keys_(input_features=image_features, keys=self.image_keys)
+    def pre_process(self, input_features):
+        _check_keys_(input_features=input_features, keys=self.image_keys)
         for key in self.image_keys:
-            image = image_features[key]
+            image = input_features[key]
             image[image < self.lower] = self.lower
             image[image > self.upper] = self.upper
             if self.divide:
                 image = image / (self.upper - self.lower)
-            image_features[key] = image
-        return image_features
+            input_features[key] = image
+        return input_features
 
 
 class Normalize_to_annotation(ImageProcessor):
