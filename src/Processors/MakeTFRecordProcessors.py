@@ -1273,6 +1273,11 @@ class AddNifti(ImageProcessor):
         return input_features
 
 
+class LoadNifti(AddNifti):
+    def __init__(self, nifti_path_keys=('image_path', 'annotation_path'), out_keys=('image', 'annotation')):
+        super(LoadNifti, self).__init__(nifti_path_keys=nifti_path_keys, out_keys=out_keys)
+
+
 class DeleteKeys(ImageProcessor):
     def __init__(self, keys_to_delete=('primary_image_nifti',)):
         self.keys_to_delete = keys_to_delete
@@ -1293,10 +1298,17 @@ class NiftiToArray(ImageProcessor):
         _check_keys_(input_features=input_features, keys=self.nifti_keys)
         for nifti_key, out_key, dtype in zip(self.nifti_keys, self.out_keys, self.dtypes):
             image_handle = input_features[nifti_key]
+            assert type(image_handle) is sitk.Image, 'Only SimpleITK Images should be passed here!'
             image_array = sitk.GetArrayFromImage(image_handle)
             input_features[out_key] = image_array.astype(dtype=dtype)
             input_features['{}_spacing'.format(out_key)] = np.asarray(image_handle.GetSpacing(), dtype='float32')
         return input_features
+
+
+class SimpleITKImageToArray(NiftiToArray):
+    def __init__(self, nifti_keys=('image_path', 'annotation_path'), out_keys=('image', 'annotation'),
+                 dtypes=('float32', 'int8')):
+        super(SimpleITKImageToArray, self).__init__(nifti_keys=nifti_keys, out_keys=out_keys, dtypes=dtypes)
 
 
 class Add_Dose(ImageProcessor):
