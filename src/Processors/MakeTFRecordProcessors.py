@@ -2234,6 +2234,7 @@ class Box_Images(ImageProcessor):
                     min_cols - annotation_cube.shape[2]]
             if len(annotation.shape) > 3:
                 pads += [[0, 0]]
+            pads = [[max([0, floor(i / 2)]), max([0, ceil(i / 2)])] for i in pads]
             annotation_cube = np.pad(annotation_cube, pads)
             if len(annotation.shape) > 3:
                 annotation_cube[..., 0] = 1 - np.sum(annotation_cube[..., 1:], axis=-1)
