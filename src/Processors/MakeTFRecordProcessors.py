@@ -1323,26 +1323,31 @@ class Distribute_into_3D(ImageProcessor):
 
 
 class Distribute_into_2D(ImageProcessor):
+    def __init__(self, image_keys=('image', 'annotation')):
+        self.image_keys = image_keys
 
     def pre_process(self, input_features):
+        _check_keys_(input_features=input_features, keys=self.image_keys)
         out_features = OrderedDict()
-        image = input_features['image']
-        annotation = input_features['annotation']
-        image_path = input_features['image_path']
-        z_images_base, rows, cols = annotation.shape[:3]
-        if len(annotation.shape) > 3:
-            input_features['num_classes'] = annotation.shape[-1]
-        for index in range(z_images_base):
-            image_features = OrderedDict()
-            image_features['image_path'] = image_path
-            image_features['image'] = image[index]
-            image_features['annotation'] = annotation[index]
-            for key in input_features.keys():
-                if key not in image_features.keys():
-                    image_features[key] = input_features[key]  # Pass along all other keys.. be careful
-            out_features['Image_{}'.format(index)] = image_features
-        input_features = out_features
-        return input_features
+        for key in self.image_keys:
+            image = input_features[key]
+            z_images_base = image.shape[0]
+            for index in range(z_images_base):
+                if index in out_features:
+                    image_features = out_features[index]
+                else:
+                    image_features = OrderedDict()
+                image_features[key] = image[index]
+        for index in out_features:
+            for key in input_features:
+                if key not in out_features[index]:
+                    out_features[index][key] = input_features[key]
+        return out_features
+
+
+class DistributeInTo2DSlices(Distribute_into_2D):
+    def __init__(self):
+        super(DistributeInTo2DSlices, self).__init__()
 
 
 class NormalizeParotidMR(ImageProcessor):
@@ -2128,7 +2133,7 @@ def expand_box_indexes(z_start, z_stop, r_start, r_stop, c_start, c_stop, annota
 
 
 class Box_Images(ImageProcessor):
-    def __init__(self, image_key='image', annotation_key='annotation', wanted_vals_for_bbox=None,
+    def __init__(self, image_keys=('image',), annotation_key='annotation', wanted_vals_for_bbox=None,
                  bounding_box_expansion=(5, 10, 10), power_val_z=1, power_val_r=1,
                  power_val_c=1, min_images=None, min_rows=None, min_cols=None,
                  post_process_keys=('image', 'annotation', 'prediction'), pad_value=None):
@@ -2149,14 +2154,13 @@ class Box_Images(ImageProcessor):
         self.bounding_box_expansion = bounding_box_expansion
         self.power_val_z, self.power_val_r, self.power_val_c = power_val_z, power_val_r, power_val_c
         self.min_images, self.min_rows, self.min_cols = min_images, min_rows, min_cols
-        self.image_key, self.annotation_key = image_key, annotation_key
+        self.image_keys, self.annotation_key = image_keys, annotation_key
         self.post_process_keys = post_process_keys
         self.pad_value = pad_value
 
     def pre_process(self, input_features):
-        _check_keys_(input_features=input_features, keys=(self.image_key, self.annotation_key))
+        _check_keys_(input_features=input_features, keys=self.image_keys + (self.annotation_key,))
         annotation = input_features[self.annotation_key]
-        image = input_features[self.image_key]
         if len(annotation.shape) > 3:
             mask = np.zeros(annotation.shape[:-1])
             argmax_annotation = np.argmax(annotation, axis=-1)
@@ -2209,27 +2213,31 @@ class Box_Images(ImageProcessor):
                                                                                    annotation.shape,
                                                                                    bounding_box_expansion=
                                                                                    remainders)
-            image_cube = image[z_start:z_stop, r_start:r_stop, c_start:c_stop]
+            input_features['z_r_c_start'] = [z_start, r_start, c_start]
+            for key in self.image_keys:
+                image = input_features[key]
+                input_features['og_shape'] = image.shape
+                input_features['og_shape_{}'.format(key)] = image.shape
+                image_cube = image[z_start:z_stop, r_start:r_stop, c_start:c_stop]
+                img_shape = image_cube.shape
+                pads = [min_images - img_shape[0], min_rows - img_shape[1], min_cols - img_shape[2]]
+                pads = [[max([0, floor(i / 2)]), max([0, ceil(i / 2)])] for i in pads]
+                if self.pad_value is not None:
+                    pad_value = self.pad_value
+                else:
+                    pad_value = np.min(image_cube)
+                image_cube = np.pad(image_cube, pads, constant_values=pad_value)
+                input_features[key] = image_cube
+                input_features['pads'] = [pads[i][0] for i in range(3)]
             annotation_cube = annotation[z_start:z_stop, r_start:r_stop, c_start:c_stop]
-            img_shape = image_cube.shape
-            pads = [min_images - img_shape[0], min_rows - img_shape[1], min_cols - img_shape[2]]
-            pads = [[max([0, floor(i / 2)]), max([0, ceil(i / 2)])] for i in pads]
-            if self.pad_value is not None:
-                pad_value = self.pad_value
-            else:
-                pad_value = np.min(image_cube)
-            image_cube = np.pad(image_cube, pads, constant_values=pad_value)
+            pads = [min_images - annotation_cube.shape[0], min_rows - annotation_cube.shape[1],
+                    min_cols - annotation_cube.shape[2]]
             if len(annotation.shape) > 3:
                 pads += [[0, 0]]
-
             annotation_cube = np.pad(annotation_cube, pads)
             if len(annotation.shape) > 3:
                 annotation_cube[..., 0] = 1 - np.sum(annotation_cube[..., 1:], axis=-1)
             input_features[self.annotation_key] = annotation_cube
-            input_features[self.image_key] = image_cube
-            input_features['z_r_c_start'] = [z_start, r_start, c_start]
-            input_features['pads'] = [pads[i][0] for i in range(3)]
-            input_features['og_shape'] = image.shape
         return input_features
 
     def post_process(self, input_features):
