@@ -27,14 +27,6 @@ def _check_keys_(input_features, keys):
                                               '{} was not found'.format(keys)
 
 
-class ImageProcessor(object):
-    def pre_process(self, input_features):
-        return input_features
-
-    def post_process(self, input_features):
-        return input_features
-
-
 def to_categorical(y, num_classes=None, dtype='float32'):
     """Converts a class vector (integers) to binary class matrix.
     Taken from tf.keras.utils.to_categorical
@@ -79,6 +71,157 @@ def get_bounding_boxes(annotation_handle, value):
     bounding_boxes = [stats.GetBoundingBox(l) for l in stats.GetLabels()]
     num_voxels = np.asarray([stats.GetNumberOfPixels(l) for l in stats.GetLabels()]).astype('float32')
     return bounding_boxes, num_voxels
+
+
+def image_resize(image, width=None, height=None, inter=cv2.INTER_AREA):
+    # initialize the dimensions of the image to be resized and
+    # grab the image size
+    dim = None
+    (h, w) = image.shape[:2]
+
+    # if both the width and height are None, then return the
+    # original image
+    if width is None and height is None:
+        return image
+
+    # check to see if the width is None
+    if height is not None:
+        # calculate the ratio of the height and construct the
+        # dimensions
+        r = height / float(h)
+        dim = (int(w * r), height)
+
+    # otherwise, the height is None
+    if width is not None:
+        # calculate the ratio of the width and construct the
+        # dimensions
+        r = width / float(w)
+        if dim is None:
+            dim = (width, int(h * r))
+        else:
+            dim = min([dim, (width, int(h * r))])
+
+    # resize the image
+    resized = cv2.resize(image, dim, interpolation=inter)
+
+    # return the resized image
+    return resized
+
+
+def variable_remove_non_liver(annotations, threshold=0.5, is_liver=False):
+    image_size_1 = annotations.shape[1]
+    image_size_2 = annotations.shape[2]
+    compare = copy.deepcopy(annotations)
+    if is_liver:
+        images_filt = gaussian_filter(copy.deepcopy(annotations), [0, .75, .75])
+    else:
+        images_filt = gaussian_filter(copy.deepcopy(annotations), [0, 1.5, 1.5])
+    compare[compare < .01] = 0
+    compare[compare > 0] = 1
+    compare = compare.astype('int')
+    for i in range(annotations.shape[0]):
+        image = annotations[i, :, :]
+        out_image = np.zeros([image_size_1,image_size_2])
+
+        labels = morphology.label(compare[i, :, :],connectivity=1)
+        for xxx in range(1,labels.max() + 1):
+            overlap = image[labels == xxx]
+            pred = sum(overlap)/overlap.shape[0]
+            cutoff = threshold
+            if pred < 0.75:
+                cutoff = 0.15
+            if cutoff != 0.95 and overlap.shape[0] < 500 and is_liver:
+                k = copy.deepcopy(compare[i, :, :])
+                k[k > cutoff] = 1
+                out_image[labels == xxx] = k[labels == xxx]
+            elif not is_liver:
+                image_filt = images_filt[i, :, :]
+                image_filt[image_filt < threshold] = 0
+                image_filt[image_filt > 0] = 1
+                image_filt = image_filt.astype('int')
+                out_image[labels == xxx] = image_filt[labels == xxx]
+            else:
+                image_filt = images_filt[i, :, :]
+                image_filt[image_filt < cutoff] = 0
+                image_filt[image_filt > 0] = 1
+                image_filt = image_filt.astype('int')
+                out_image[labels == xxx] = image_filt[labels == xxx]
+        annotations[i, :, :] = out_image
+    return annotations
+
+
+def remove_non_liver(annotations, threshold=0.5, max_volume=9999999.0, min_volume=0.0, max_area=99999.0, min_area=0.0,
+                     do_3D = True, do_2D=False, spacing=None):
+    '''
+    :param annotations: An annotation of shape [Z_images, rows, columns]
+    :param threshold: Threshold of probability from 0.0 to 1.0
+    :param max_volume: Max volume of structure allowed
+    :param min_volume: Minimum volume of structure allowed, in ccs
+    :param max_area: Max volume of structure allowed
+    :param min_area: Minimum volume of structure allowed
+    :param do_3D: Do a 3D removal of structures, only take largest connected structure
+    :param do_2D: Do a 2D removal of structures, only take largest connected structure
+    :param spacing: Spacing of elements, in form of [z_spacing, row_spacing, column_spacing]
+    :return: Masked annotation
+    '''
+    min_volume = min_volume * (10 * 10 * 10)  # cm to mm3
+    annotations = copy.deepcopy(annotations)
+    annotations = np.squeeze(annotations)
+    if not annotations.dtype == 'int':
+        annotations[annotations < threshold] = 0
+        annotations[annotations > 0] = 1
+        annotations = annotations.astype('int')
+    if do_3D:
+        labels = morphology.label(annotations, connectivity=1)
+        if np.max(labels) > 1:
+            area = []
+            max_val = 0
+            for i in range(1,labels.max()+1):
+                new_area = labels[labels == i].shape[0]
+                if spacing is not None:
+                    volume = np.prod(spacing) * new_area
+                    if volume > max_volume:
+                        continue
+                    elif volume < min_volume:
+                        continue
+                area.append(new_area)
+                if new_area == max(area):
+                    max_val = i
+            labels[labels != max_val] = 0
+            labels[labels > 0] = 1
+            annotations = labels
+    if do_2D:
+        slice_indexes = np.where(np.sum(annotations,axis=(1,2))>0)
+        if slice_indexes:
+            for slice_index in slice_indexes[0]:
+                labels = morphology.label(annotations[slice_index], connectivity=1)
+                if np.max(labels) == 1:
+                    continue
+                area = []
+                max_val = 0
+                for i in range(1, labels.max() + 1):
+                    new_area = labels[labels == i].shape[0]
+                    if spacing is not None:
+                        temp_area = np.prod(spacing[1:]) * new_area / 100
+                        if temp_area > max_area:
+                            continue
+                        elif temp_area < min_area:
+                            continue
+                    area.append(new_area)
+                    if new_area == max(area):
+                        max_val = i
+                labels[labels != max_val] = 0
+                labels[labels > 0] = 1
+                annotations[slice_index] = labels
+    return annotations
+
+
+class ImageProcessor(object):
+    def pre_process(self, input_features):
+        return input_features
+
+    def post_process(self, input_features):
+        return input_features
 
 
 class Remove_Smallest_Structures(object):
@@ -586,41 +729,6 @@ class CombineKeys(ImageProcessor):
         return input_features
 
 
-def image_resize(image, width=None, height=None, inter=cv2.INTER_AREA):
-    # initialize the dimensions of the image to be resized and
-    # grab the image size
-    dim = None
-    (h, w) = image.shape[:2]
-
-    # if both the width and height are None, then return the
-    # original image
-    if width is None and height is None:
-        return image
-
-    # check to see if the width is None
-    if height is not None:
-        # calculate the ratio of the height and construct the
-        # dimensions
-        r = height / float(h)
-        dim = (int(w * r), height)
-
-    # otherwise, the height is None
-    if width is not None:
-        # calculate the ratio of the width and construct the
-        # dimensions
-        r = width / float(w)
-        if dim is None:
-            dim = (width, int(h * r))
-        else:
-            dim = min([dim, (width, int(h * r))])
-
-    # resize the image
-    resized = cv2.resize(image, dim, interpolation=inter)
-
-    # return the resized image
-    return resized
-
-
 class ArgMax(ImageProcessor):
     def __init__(self, image_keys=('prediction',), axis=-1):
         self.image_keys = image_keys
@@ -826,114 +934,6 @@ class RemoveDisconnectedStructures(ImageProcessor):
                                                 max_volume=self.max_volume,
                                                 spacing=input_features[self.dicom_handle_key].GetSpacing())
         return input_features
-
-
-def variable_remove_non_liver(annotations, threshold=0.5, is_liver=False):
-    image_size_1 = annotations.shape[1]
-    image_size_2 = annotations.shape[2]
-    compare = copy.deepcopy(annotations)
-    if is_liver:
-        images_filt = gaussian_filter(copy.deepcopy(annotations), [0, .75, .75])
-    else:
-        images_filt = gaussian_filter(copy.deepcopy(annotations), [0, 1.5, 1.5])
-    compare[compare < .01] = 0
-    compare[compare > 0] = 1
-    compare = compare.astype('int')
-    for i in range(annotations.shape[0]):
-        image = annotations[i, :, :]
-        out_image = np.zeros([image_size_1,image_size_2])
-
-        labels = morphology.label(compare[i, :, :],connectivity=1)
-        for xxx in range(1,labels.max() + 1):
-            overlap = image[labels == xxx]
-            pred = sum(overlap)/overlap.shape[0]
-            cutoff = threshold
-            if pred < 0.75:
-                cutoff = 0.15
-            if cutoff != 0.95 and overlap.shape[0] < 500 and is_liver:
-                k = copy.deepcopy(compare[i, :, :])
-                k[k > cutoff] = 1
-                out_image[labels == xxx] = k[labels == xxx]
-            elif not is_liver:
-                image_filt = images_filt[i, :, :]
-                image_filt[image_filt < threshold] = 0
-                image_filt[image_filt > 0] = 1
-                image_filt = image_filt.astype('int')
-                out_image[labels == xxx] = image_filt[labels == xxx]
-            else:
-                image_filt = images_filt[i, :, :]
-                image_filt[image_filt < cutoff] = 0
-                image_filt[image_filt > 0] = 1
-                image_filt = image_filt.astype('int')
-                out_image[labels == xxx] = image_filt[labels == xxx]
-        annotations[i, :, :] = out_image
-    return annotations
-
-
-def remove_non_liver(annotations, threshold=0.5, max_volume=9999999.0, min_volume=0.0, max_area=99999.0, min_area=0.0,
-                     do_3D = True, do_2D=False, spacing=None):
-    '''
-    :param annotations: An annotation of shape [Z_images, rows, columns]
-    :param threshold: Threshold of probability from 0.0 to 1.0
-    :param max_volume: Max volume of structure allowed
-    :param min_volume: Minimum volume of structure allowed, in ccs
-    :param max_area: Max volume of structure allowed
-    :param min_area: Minimum volume of structure allowed
-    :param do_3D: Do a 3D removal of structures, only take largest connected structure
-    :param do_2D: Do a 2D removal of structures, only take largest connected structure
-    :param spacing: Spacing of elements, in form of [z_spacing, row_spacing, column_spacing]
-    :return: Masked annotation
-    '''
-    min_volume = min_volume * (10 * 10 * 10)  # cm to mm3
-    annotations = copy.deepcopy(annotations)
-    annotations = np.squeeze(annotations)
-    if not annotations.dtype == 'int':
-        annotations[annotations < threshold] = 0
-        annotations[annotations > 0] = 1
-        annotations = annotations.astype('int')
-    if do_3D:
-        labels = morphology.label(annotations, connectivity=1)
-        if np.max(labels) > 1:
-            area = []
-            max_val = 0
-            for i in range(1,labels.max()+1):
-                new_area = labels[labels == i].shape[0]
-                if spacing is not None:
-                    volume = np.prod(spacing) * new_area
-                    if volume > max_volume:
-                        continue
-                    elif volume < min_volume:
-                        continue
-                area.append(new_area)
-                if new_area == max(area):
-                    max_val = i
-            labels[labels != max_val] = 0
-            labels[labels > 0] = 1
-            annotations = labels
-    if do_2D:
-        slice_indexes = np.where(np.sum(annotations,axis=(1,2))>0)
-        if slice_indexes:
-            for slice_index in slice_indexes[0]:
-                labels = morphology.label(annotations[slice_index], connectivity=1)
-                if np.max(labels) == 1:
-                    continue
-                area = []
-                max_val = 0
-                for i in range(1, labels.max() + 1):
-                    new_area = labels[labels == i].shape[0]
-                    if spacing is not None:
-                        temp_area = np.prod(spacing[1:]) * new_area / 100
-                        if temp_area > max_area:
-                            continue
-                        elif temp_area < min_area:
-                            continue
-                    area.append(new_area)
-                    if new_area == max(area):
-                        max_val = i
-                labels[labels != max_val] = 0
-                labels[labels > 0] = 1
-                annotations[slice_index] = labels
-    return annotations
 
 
 class SqueezeDimensions(ImageProcessor):
