@@ -1347,8 +1347,8 @@ class Distribute_into_2D(ImageProcessor):
 
 
 class DistributeInTo2DSlices(Distribute_into_2D):
-    def __init__(self):
-        super(DistributeInTo2DSlices, self).__init__()
+    def __init__(self, image_keys=('image', 'annotation')):
+        super(DistributeInTo2DSlices, self).__init__(image_keys=image_keys)
 
 
 class NormalizeParotidMR(ImageProcessor):
