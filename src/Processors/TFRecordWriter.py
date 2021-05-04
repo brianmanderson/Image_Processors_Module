@@ -124,15 +124,9 @@ def dictionary_to_tf_record(filename, input_features):
     features = {}
     d_type = {}
     writer = tf.io.TFRecordWriter(filename)
-    examples = 0
-    for key in input_features.keys():
-        example_proto = return_example_proto(input_features[key], features, d_type)
-        writer.write(example_proto.SerializeToString())
-        examples += 1
+    example_proto = return_example_proto(input_features, features, d_type)
+    writer.write(example_proto.SerializeToString())
     writer.close()
-    fid = open(filename.replace('.tfrecord', '_Num_Examples.txt'), 'w+')
-    fid.write(str(examples))
-    fid.close()
     save_obj(filename.replace('.tfrecord', '_features.pkl'), features)
     save_obj(filename.replace('.tfrecord', '_dtype.pkl'), d_type)
     del input_features
@@ -160,7 +154,7 @@ def down_dictionary(input_dictionary, out_dictionary=None, out_index=0):
         if type(data) is dict or type(data) is OrderedDict:
             out_dictionary, out_index = down_dictionary(input_dictionary[key], out_dictionary, out_index)
         else:
-            out_dictionary['Example_{}'.format(out_index)] = input_dictionary
+            out_dictionary['{}'.format(out_index)] = input_dictionary
             out_index += 1
             return out_dictionary, out_index
     return out_dictionary, out_index
@@ -182,9 +176,9 @@ class RecordWriter(object):
             filename = os.path.join(self.out_path, image_name)
             if not filename.endswith('.tfrecord'):
                 filename += '.tfrecord'
+            filename = filename.replace('.tfrecord', '_{}.tfrecord'.format(example_key))
             if not os.path.exists(filename) or self.rewrite:
-                dictionary_to_tf_record(filename=filename, input_features=input_features)
-            break
+                dictionary_to_tf_record(filename=filename, input_features=example)
 
 
 class RecordWriterRecurrence(RecordWriter):
@@ -212,7 +206,7 @@ class RecordWriterRecurrence(RecordWriter):
                 filename = os.path.join(out_path,
                                         image_name.replace('.tfrecord', '_Recurrence_{}.tfrecord'.format(recurred)))
             if not os.path.exists(filename) or self.rewrite:
-                dictionary_to_tf_record(filename=filename, input_features={'out_example': example})
+                dictionary_to_tf_record(filename=filename, input_features=example)
 
 
 def worker_def(a):
@@ -245,9 +239,10 @@ def return_data_dict(niftii_path):
     return data_dict
 
 
-def parallel_record_writer(niftii_path, out_path=None, rewrite=False, thread_count=int(cpu_count() * .5),
-                           max_records=np.inf, is_3D=True, extension=np.inf, image_processors=None,
-                           special_actions=False, verbose=False, file_parser=None, debug=False, recordwriter=None):
+def parallel_record_writer(dictionary_list=None, out_path=None, max_records=np.inf, image_processors=None,
+                           recordwriter=None, thread_count=int(cpu_count() * .5), niftii_path=None, rewrite=False,
+                           is_3D=True, extension=np.inf, special_actions=False, verbose=False, file_parser=None,
+                           debug=False):
     """
     :param niftii_path: path to where Overall_Data and mask files are located
     :param out_path: path that we will write records to
@@ -260,6 +255,7 @@ def parallel_record_writer(niftii_path, out_path=None, rewrite=False, thread_cou
         see Image_Processors, TF_Record
     :param special_actions: if you're doing something special and don't want Add_Images_And_Annotations
     :param verbose: Binary, print processors as they go
+    :param dictionary_list: a list of dictionaries, typically [{'image_path': path, 'annotation_path': path}]
     :return:
     """
     if out_path is None:
@@ -292,28 +288,52 @@ def parallel_record_writer(niftii_path, out_path=None, rewrite=False, thread_cou
             t = Thread(target=worker_def, args=(a,))
             t.start()
             threads.append(t)
-    if file_parser is None:
-        data_dict = return_data_dict(niftii_path=niftii_path)
-    else:
-        data_dict = file_parser(**locals())
-    counter = 0
-    for iteration in data_dict.keys():
-        item = copy.deepcopy(data_dict[iteration])
-        input_item = OrderedDict()
-        input_item['input_features_dictionary'] = item
-        input_item['image_processors'] = image_processors
-        input_item['record_writer'] = recordwriter
-        input_item['verbose'] = verbose
-        if not debug:
-            q.put(input_item)
+    if dictionary_list is None:
+        if file_parser is None:
+            data_dict = return_data_dict(niftii_path=niftii_path)
         else:
-            serialize_example(**input_item)
-        counter += 1
-        if counter >= max_records:
-            break
+            data_dict = file_parser(**locals())
+    else:
+        data_dict = dictionary_list
+    counter = 0
+    if type(data_dict) in (dict, OrderedDict):
+        for iteration in data_dict.keys():
+            item = copy.deepcopy(data_dict[iteration])
+            input_item = OrderedDict()
+            input_item['input_features_dictionary'] = item
+            input_item['image_processors'] = image_processors
+            input_item['record_writer'] = recordwriter
+            input_item['verbose'] = verbose
+            if not debug:
+                q.put(input_item)
+            else:
+                serialize_example(**input_item)
+            counter += 1
+            if counter >= max_records:
+                break
+    else:
+        data_dict = list(data_dict)
+        while data_dict:
+            item = data_dict.pop()
+            input_item = OrderedDict()
+            input_item['input_features_dictionary'] = item
+            input_item['image_processors'] = image_processors
+            input_item['record_writer'] = recordwriter
+            input_item['verbose'] = verbose
+            if not debug:
+                q.put(input_item)
+            else:
+                serialize_example(**input_item)
+            counter += 1
+            if counter >= max_records:
+                break
     if not debug:
         for i in range(thread_count):
             q.put(None)
         for t in threads:
             t.join()
     return None
+
+
+if __name__ == '__main__':
+    pass
