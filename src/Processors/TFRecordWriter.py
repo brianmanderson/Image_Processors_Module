@@ -260,23 +260,8 @@ def parallel_record_writer(dictionary_list=None, out_path=None, max_records=np.i
     """
     if out_path is None:
         out_path = niftii_path
-    if image_processors is None:
-        if is_3D:
-            image_processors = [Processors.Add_Images_And_Annotations(),
-                                Processors.Clip_Images_By_Extension(extension=extension),
-                                Processors.Distribute_into_3D()]
-        else:
-            image_processors = [Processors.Add_Images_And_Annotations(),
-                                Processors.Clip_Images_By_Extension(extension=extension),
-                                Processors.Distribute_into_2D()]
+    assert image_processors is not None, 'Please provide a list of image processors'
     add_images_and_annotations = True
-    if not special_actions:
-        for processor in image_processors:
-            if type(processor) is Processors.Add_Images_And_Annotations:
-                add_images_and_annotations = False
-                break
-        if add_images_and_annotations:
-            image_processors = [Processors.Add_Images_And_Annotations()] + image_processors
     if recordwriter is None:
         recordwriter = RecordWriter(out_path=out_path, file_name_key='file_name', rewrite=rewrite)
     threads = []
