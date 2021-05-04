@@ -1338,6 +1338,7 @@ class Distribute_into_2D(ImageProcessor):
                 else:
                     image_features = OrderedDict()
                 image_features[key] = image[index]
+                out_features[index] = image_features
         for index in out_features:
             for key in input_features:
                 if key not in out_features[index]:
