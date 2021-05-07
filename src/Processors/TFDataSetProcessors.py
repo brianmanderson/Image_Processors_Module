@@ -335,6 +335,18 @@ class Combine_Liver_Lobe_Segments(ImageProcessor):
         return image_features
 
 
+class ToCategorical(ImageProcessor):
+    def __init__(self, annotation_keys=('annotation',), number_of_classes=(2,)):
+        self.annotation_keys = annotation_keys
+        self.number_of_classes = number_of_classes
+
+    def parse(self, input_features, *args, **kwargs):
+        _check_keys_(input_features=input_features, keys=self.annotation_keys)
+        for key, num_classes in zip(self.annotation_keys, self.number_of_classes):
+            input_features[key] = tf.keras.utils.to_categorical(input_features[key], num_classes)
+        return input_features
+
+
 class ExpandDimension(ImageProcessor):
     def __init__(self, axis=-1, image_keys=('image', 'annotation')):
         self.axis = axis
