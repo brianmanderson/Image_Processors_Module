@@ -340,7 +340,8 @@ class To_Categorical(ImageProcessor):
     def pre_process(self, input_features):
         _check_keys_(input_features=input_features, keys=self.annotation_keys)
         for key in self.annotation_keys:
-            input_features[key] = to_categorical(input_features[key], self.num_classes)
+            annotation = input_features[key]
+            input_features[key] = to_categorical(annotation, self.num_classes).astype(annotation.dtype)
             input_features['num_classes_{}'.format(key)] = self.num_classes
         return input_features
 
@@ -2294,7 +2295,7 @@ class Box_Images(ImageProcessor):
                 else:
                     pad_value = np.min(image_cube)
                 image_cube = np.pad(image_cube, pads, constant_values=pad_value)
-                input_features[key] = image_cube
+                input_features[key] = image_cube.astype(image.dtype)
                 input_features['pads'] = [pads[i][0] for i in range(3)]
             annotation_cube = annotation[z_start:z_stop, r_start:r_stop, c_start:c_stop]
             pads = [min_images - annotation_cube.shape[0], min_rows - annotation_cube.shape[1],
@@ -2305,7 +2306,7 @@ class Box_Images(ImageProcessor):
             annotation_cube = np.pad(annotation_cube, pads)
             if len(annotation.shape) > 3:
                 annotation_cube[..., 0] = 1 - np.sum(annotation_cube[..., 1:], axis=-1)
-            input_features[self.annotation_key] = annotation_cube
+            input_features[self.annotation_key] = annotation_cube.astype(annotation.dtype)
         return input_features
 
     def post_process(self, input_features):
