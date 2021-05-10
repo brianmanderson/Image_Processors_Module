@@ -2167,6 +2167,15 @@ class Normalize_to_annotation(ImageProcessor):
         return input_features
 
 
+class NormalizeToAnnotation(Normalize_to_annotation):
+    def __init__(self, image_key='image', annotation_key='annotation', annotation_value_list=None, mirror_max=False,
+                 lower_percentile=None, upper_percentile=None):
+        super(NormalizeToAnnotation, self).__init__(image_key=image_key, annotation_key=annotation_key,
+                                                    annotation_value_list=annotation_value_list,
+                                                    mirror_max=mirror_max, lower_percentile=lower_percentile,
+                                                    upper_percentile=upper_percentile)
+
+
 def expand_box_indexes(z_start, z_stop, r_start, r_stop, c_start, c_stop, annotation_shape, bounding_box_expansion):
     z_start = max([0, z_start - floor(bounding_box_expansion[0] / 2)])
     z_stop = min([annotation_shape[0], z_stop + ceil(bounding_box_expansion[0] / 2)])
