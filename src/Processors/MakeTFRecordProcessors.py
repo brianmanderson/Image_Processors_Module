@@ -345,6 +345,11 @@ class To_Categorical(ImageProcessor):
         return input_features
 
 
+class ToCategorical(To_Categorical):
+    def __init__(self, num_classes=None, annotation_keys=('annotation',)):
+        super(ToCategorical, self).__init__(num_classes=num_classes, annotation_keys=annotation_keys)
+
+
 class SmoothingPredictionRecursiveGaussian(ImageProcessor):
     def __init__(self, sigma=(0.1, 0.1, 0.0001), pred_axis=[1], prediction_key='prediction'):
         self.sigma = sigma
@@ -599,7 +604,7 @@ class ResampleSITKHandles(ImageProcessor):
                 image_handle = resampler.resample_image(input_image_handle=image_handle,
                                                         output_spacing=output_spacing,
                                                         interpolator=interpolator)
-                input_features[key] = sitk.GetArrayFromImage(image_handle)
+                input_features[key] = image_handle
                 input_features['{}_spacing'.format(key)] = np.asarray(self.desired_output_spacing, dtype='float32')
         return input_features
 
@@ -1239,17 +1244,26 @@ class N4BiasCorrection(ImageProcessor):
 
 
 class Split_Disease_Into_Cubes(ImageProcessor):
-    def __init__(self, disease_annotation=None, cube_size=(16, 120, 120), min_voxel_volume=0, max_voxels=np.inf):
-        '''
-        :param disease_annotation: integer for disease annotation
-        '''
+    def __init__(self, disease_annotation=None, cube_size=(16, 120, 120), min_voxel_volume=0, max_voxels=np.inf,
+                 image_key='image', annotation_key='annotation'):
+        """
+        :param disease_annotation:
+        :param cube_size:
+        :param min_voxel_volume:
+        :param max_voxels:
+        :param image_key:
+        :param annotation_key:
+        """
         self.disease_annotation = disease_annotation
         self.cube_size = np.asarray(cube_size)
         self.min_voxel_volume = min_voxel_volume
         self.max_voxels = max_voxels
+        self.image_key = image_key
+        self.annotation_key = annotation_key
         assert disease_annotation is not None, 'Provide an integer for what is disease'
 
     def pre_process(self, input_features):
+        _check_keys_(input_features=input_features, keys=(self.image_key, self.annotation_key))
         if 'bounding_boxes_{}'.format(self.disease_annotation) not in input_features:
             Add_Bounding_Box = Add_Bounding_Box_Indexes([self.disease_annotation], add_to_dictionary=False)
             input_features = Add_Bounding_Box.pre_process(input_features)
@@ -1258,8 +1272,8 @@ class Split_Disease_Into_Cubes(ImageProcessor):
             voxel_volumes = input_features['voxel_volumes_{}'.format(self.disease_annotation)]
             del input_features['voxel_volumes_{}'.format(self.disease_annotation)]
             del input_features['bounding_boxes_{}'.format(self.disease_annotation)]
-            image_base = input_features['image']
-            annotation_base = input_features['annotation']
+            image_base = input_features[self.image_key]
+            annotation_base = input_features[self.annotation_key]
             out_features = OrderedDict()
             for cube_index, [box, voxels] in enumerate(zip(bounding_boxes, voxel_volumes)):
                 if voxels < self.min_voxel_volume or voxels > self.max_voxels:
