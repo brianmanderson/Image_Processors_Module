@@ -560,6 +560,60 @@ class AddSpacing(ImageProcessor):
         return input_features
 
 
+class ResampleSitkHandles(ImageProcessor):
+    def __init__(self, resample_keys=('image_handle', 'annotation_handle'),
+                 resample_interpolators=('Linear', 'Nearest'),
+                 desired_output_spacing=(None, None, None), make_512=False, verbose=True,
+                 post_process_resample_keys=None, post_process_original_spacing_keys=None,
+                 post_process_interpolators=None):
+        """
+        :param resample_keys: tuple of keys in input_features to resample
+        :param resample_interpolators: tuple of SimpleITK interpolators, 'Linear' or 'Nearest'
+        :param desired_output_spacing: desired output spacing, (row, col, z)
+        :param make_512: binary, make the image be 512x512?
+        """
+        self.desired_output_spacing = desired_output_spacing
+        self.resample_keys = resample_keys
+        self.resample_interpolators = resample_interpolators
+        self.make_512 = make_512
+        self.verbose = verbose
+        self.post_process_resample_keys = post_process_resample_keys
+        self.post_process_original_spacing_keys = post_process_original_spacing_keys
+        self.post_process_interpolators = post_process_interpolators
+
+    def pre_process(self, input_features):
+        resampler = ImageResampler()
+        _check_keys_(input_features=input_features, keys=self.resample_keys)
+        for key, interpolator in zip(self.resample_keys, self.resample_interpolators):
+            image_handle = input_features[key]
+            assert type(image_handle) is sitk.Image, 'Pass a SimpleITK Image'
+            input_spacing = image_handle.GetSpacing()
+            output_spacing = []
+            for index in range(3):
+                if self.desired_output_spacing[index] is None:
+                    if input_spacing[index] < 0.5 and self.make_512:
+                        spacing = input_spacing[index] * 2
+                    else:
+                        spacing = input_spacing[index]
+                    output_spacing.append(spacing)
+                else:
+                    output_spacing.append(self.desired_output_spacing[index])
+            output_spacing = tuple(output_spacing)
+            input_features['{}_original_spacing'.format(key)] = np.asarray(input_spacing, dtype='float32')
+            input_features['{}_output_spacing'.format(key)] = np.asarray(output_spacing, dtype='float32')
+            input_features['{}_original_size'.format(key)] = np.asarray(image_handle.GetSize(), dtype='float32')
+            input_features['output_spacing'] = np.asarray(output_spacing, dtype='float32')
+            if output_spacing != input_spacing:
+                if self.verbose:
+                    print('Resampling {} to {}'.format(input_spacing, output_spacing))
+                image_handle = resampler.resample_image(input_image_handle=image_handle,
+                                                        output_spacing=output_spacing,
+                                                        interpolator=interpolator)
+                input_features[key] = sitk.GetArrayFromImage(image_handle)
+                input_features['{}_spacing'.format(key)] = np.asarray(self.desired_output_spacing, dtype='float32')
+        return input_features
+
+
 class Resampler(ImageProcessor):
     def __init__(self, resample_keys=('image', 'annotation'), resample_interpolators=('Linear', 'Nearest'),
                  desired_output_spacing=(None, None, None), make_512=False, verbose=True,
