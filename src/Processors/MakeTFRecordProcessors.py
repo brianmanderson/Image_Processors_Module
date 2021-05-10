@@ -560,14 +560,15 @@ class AddSpacing(ImageProcessor):
         return input_features
 
 
-class ResampleSitkHandles(ImageProcessor):
+class ResampleSITKHandles(ImageProcessor):
     def __init__(self, resample_keys=('image_handle', 'annotation_handle'),
                  resample_interpolators=('Linear', 'Nearest'),
-                 desired_output_spacing=(None, None, None),verbose=True):
+                 desired_output_spacing=(None, None, None), verbose=True):
         """
         :param resample_keys: tuple of keys in input_features to resample
         :param resample_interpolators: tuple of SimpleITK interpolators, 'Linear' or 'Nearest'
         :param desired_output_spacing: desired output spacing, (row, col, z)
+        :param verbose: binary, print when changing spacing
         """
         self.desired_output_spacing = desired_output_spacing
         self.resample_keys = resample_keys
