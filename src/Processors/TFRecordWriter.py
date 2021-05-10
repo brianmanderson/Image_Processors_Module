@@ -258,11 +258,10 @@ def parallel_record_writer(dictionary_list=None, out_path=None, max_records=np.i
     :param dictionary_list: a list of dictionaries, typically [{'image_path': path, 'annotation_path': path}]
     :return:
     """
-    if out_path is None:
-        out_path = niftii_path
     assert image_processors is not None, 'Please provide a list of image processors'
-    add_images_and_annotations = True
     if recordwriter is None:
+        if out_path is None:
+            out_path = niftii_path
         recordwriter = RecordWriter(out_path=out_path, file_name_key='file_name', rewrite=rewrite)
     threads = []
     q = None
