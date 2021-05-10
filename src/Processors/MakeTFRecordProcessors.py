@@ -591,11 +591,7 @@ class ResampleSitkHandles(ImageProcessor):
             output_spacing = []
             for index in range(3):
                 if self.desired_output_spacing[index] is None:
-                    if input_spacing[index] < 0.5 and self.make_512:
-                        spacing = input_spacing[index] * 2
-                    else:
-                        spacing = input_spacing[index]
-                    output_spacing.append(spacing)
+                    output_spacing.append(input_spacing[index])
                 else:
                     output_spacing.append(self.desired_output_spacing[index])
             output_spacing = tuple(output_spacing)
