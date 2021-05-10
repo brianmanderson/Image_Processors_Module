@@ -1312,14 +1312,13 @@ class Split_Disease_Into_Cubes(ImageProcessor):
                 for box_index, [image_cube, annotation_cube] in enumerate(zip(stack_image, stack_annotation)):
                     temp_feature = OrderedDict()
                     image_cube, annotation_cube = image_cube[0], annotation_cube[0]
-                    temp_feature['image'] = image_cube[:self.cube_size[0]]
-                    temp_feature['annotation'] = annotation_cube[:self.cube_size[0]]
+                    temp_feature[self.image_key] = image_cube[:self.cube_size[0]]
+                    temp_feature[self.annotation_key] = annotation_cube[:self.cube_size[0]]
                     for key in input_features:  # Bring along anything else we care about
                         if key not in temp_feature.keys():
                             temp_feature[key] = input_features[key]
                     out_features['Disease_Box_{}_{}'.format(cube_index, box_index)] = temp_feature
             input_features = out_features
-            return input_features
         return input_features
 
 
@@ -2206,7 +2205,7 @@ class Box_Images(ImageProcessor):
                  power_val_c=1, min_images=None, min_rows=None, min_cols=None,
                  post_process_keys=('image', 'annotation', 'prediction'), pad_value=None):
         """
-        :param image_key: key which corresponds to an image to be normalized
+        :param image_keys: keys which corresponds to an image to be normalized
         :param annotation_key: key which corresponds to an annotation image used for normalization
         :param wanted_vals_for_bbox:
         :param bounding_box_expansion:
@@ -2301,7 +2300,7 @@ class Box_Images(ImageProcessor):
             pads = [min_images - annotation_cube.shape[0], min_rows - annotation_cube.shape[1],
                     min_cols - annotation_cube.shape[2]]
             if len(annotation.shape) > 3:
-                pads += [[0, 0]]
+                pads += [0]
             pads = [[max([0, floor(i / 2)]), max([0, ceil(i / 2)])] for i in pads]
             annotation_cube = np.pad(annotation_cube, pads)
             if len(annotation.shape) > 3:
