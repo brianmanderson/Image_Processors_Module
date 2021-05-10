@@ -2154,7 +2154,7 @@ class Normalize_to_annotation(ImageProcessor):
         _check_keys_(input_features=input_features, keys=(self.image_key, self.annotation_key))
         images = input_features[self.image_key]
         liver = input_features[self.annotation_key]
-        data = images[liver == 1].flatten()
+        data = images[liver > 0].flatten()
         counts, bins = np.histogram(data, bins=100)
         bins = bins[:-1]
         count_index = np.where(counts == np.max(counts))[0][-1]

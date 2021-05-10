@@ -161,7 +161,7 @@ def down_dictionary(input_dictionary, out_dictionary=None, out_index=0):
 
 
 class RecordWriter(object):
-    def __init__(self, out_path, file_name_key='file_name', rewrite=False, **kwargs):
+    def __init__(self, out_path, file_name_key='file_name', rewrite=False):
         self.file_name_key = file_name_key
         self.out_path = out_path
         self.rewrite = rewrite
@@ -300,7 +300,7 @@ def parallel_record_writer(dictionary_list=None, out_path=None, max_records=np.i
         while data_dict:
             item = data_dict.pop()
             input_item = OrderedDict()
-            input_item['input_features_dictionary'] = item
+            input_item['input_features_dictionary'] = copy.deepcopy(item)
             input_item['image_processors'] = image_processors
             input_item['record_writer'] = recordwriter
             input_item['verbose'] = verbose
