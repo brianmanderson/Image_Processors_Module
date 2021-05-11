@@ -515,13 +515,14 @@ class CombineAnnotations(ImageProcessor):
 
 class MaskOneBasedOnOther(ImageProcessor):
     def __init__(self, guiding_keys=('annotation',), changing_keys=('image',), guiding_values=(1,), mask_values=(-1,),
-                 methods=('equal_to',)):
+                 methods=('equal_to',), on_channel=False):
         """
         :param guiding_keys: keys which will guide the masking of another key
         :param changing_keys: keys which will be masked
         :param guiding_values: values which will define the mask
         :param mask_values: values which will be changed
         :param methods: method of masking, 'equal_to', 'less_than', 'greater_than'
+        :param on_channel: binary, should we look at values or channels?
         """
         self.guiding_keys, self.changing_keys = guiding_keys, changing_keys
         self.guiding_values, self.mask_values = guiding_values, mask_values
@@ -529,6 +530,7 @@ class MaskOneBasedOnOther(ImageProcessor):
             assert method in ('equal_to', 'less_than', 'greater_than'), 'Only provide a method of equal_to, ' \
                                                                         'less_than, or greater_than'
         self.methods = methods
+        self.on_channel = on_channel
 
     def parse(self, input_features, *args, **kwargs):
         _check_keys_(input_features=input_features, keys=self.guiding_keys)
@@ -537,16 +539,28 @@ class MaskOneBasedOnOther(ImageProcessor):
                                                                                 self.guiding_values, self.mask_values,
                                                                                 self.methods):
             mask_value = tf.constant(mask_value, dtype=input_features[changing_key].dtype)
-            guiding_value = tf.constant(guiding_value, dtype=input_features[guiding_key].dtype)
-            if method == 'equal_to':
-                input_features[changing_key] = tf.where(input_features[guiding_key] == guiding_value,
-                                                        mask_value, input_features[changing_key])
-            elif method == 'less_than':
-                input_features[changing_key] = tf.where(input_features[guiding_key] < guiding_value,
-                                                        mask_value, input_features[changing_key])
-            elif method == 'greater_than':
-                input_features[changing_key] = tf.where(input_features[guiding_key] > guiding_value,
-                                                        mask_value, input_features[changing_key])
+            if self.on_channel:
+                val = tf.constant(1, dtype=input_features[guiding_key].dtype)
+                if method == 'equal_to':
+                    input_features[changing_key] = tf.where(input_features[guiding_key][..., guiding_value] == val,
+                                                            mask_value, input_features[changing_key])
+                elif method == 'less_than':
+                    input_features[changing_key] = tf.where(input_features[guiding_key] < val,
+                                                            mask_value, input_features[changing_key])
+                elif method == 'greater_than':
+                    input_features[changing_key] = tf.where(input_features[guiding_key] > val,
+                                                            mask_value, input_features[changing_key])
+            else:
+                guiding_value = tf.constant(guiding_value, dtype=input_features[guiding_key].dtype)
+                if method == 'equal_to':
+                    input_features[changing_key] = tf.where(input_features[guiding_key] == guiding_value,
+                                                            mask_value, input_features[changing_key])
+                elif method == 'less_than':
+                    input_features[changing_key] = tf.where(input_features[guiding_key] < guiding_value,
+                                                            mask_value, input_features[changing_key])
+                elif method == 'greater_than':
+                    input_features[changing_key] = tf.where(input_features[guiding_key] > guiding_value,
+                                                            mask_value, input_features[changing_key])
         return input_features
 
 
@@ -574,6 +588,24 @@ class CreateDiseaseKey(ImageProcessor):
         image_features['disease'] = tf.where(image_features['primary_liver'] > value,
                                              value,
                                              tf.constant(0, dtype=image_features['primary_liver'].dtype))
+        return image_features
+
+
+class CreateNewKeyFromArgSum(ImageProcessor):
+    def __init__(self, guiding_keys=('annotation', ), new_keys=('mask',)):
+        """
+        :param guiding_keys: keys which will guide the masking of another key
+        :param new_keys: keys which will be masked
+        """
+        self.guiding_keys = guiding_keys
+        self.new_keys = new_keys
+
+    def parse(self, image_features, *args, **kwargs):
+        _check_keys_(input_features=image_features, keys=self.guiding_keys)
+        for guiding_key, new_key in zip(self.guiding_keys, self.new_keys):
+            annotation = image_features[guiding_key]
+            mask = tf.expand_dims(tf.reduce_sum(annotation[..., 1:], axis=-1), axis=-1)
+            image_features[new_key] = mask
         return image_features
 
 
