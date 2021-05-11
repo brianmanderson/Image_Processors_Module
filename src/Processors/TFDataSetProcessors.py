@@ -513,6 +513,24 @@ class CombineAnnotations(ImageProcessor):
         return image_features
 
 
+class ReturnSingleChannel(ImageProcessor):
+    def __init__(self, image_keys=('annotation', ), channels=(1, ), out_keys=('annotation', )):
+        """
+        :param image_keys: tuple of image keys
+        :param channels: tuple of channels to withdraw
+        :param out_keys: tuple of image keys to be named. Same name will rewrite
+        """
+        self.image_keys = image_keys
+        self.channels = channels
+        self.out_keys = out_keys
+
+    def parse(self, image_features, *args, **kwargs):
+        _check_keys_(input_features=image_features, keys=self.image_keys)
+        for key, channel, new_key in zip(self.image_keys, self.channels, self.out_keys):
+            image_features[new_key] = image_features[key][..., channel]
+        return image_features
+
+
 class MaskOneBasedOnOther(ImageProcessor):
     def __init__(self, guiding_keys=('annotation',), changing_keys=('image',), guiding_values=(1,), mask_values=(-1,),
                  methods=('equal_to',), on_channel=False):
