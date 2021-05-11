@@ -343,7 +343,8 @@ class ToCategorical(ImageProcessor):
     def parse(self, input_features, *args, **kwargs):
         _check_keys_(input_features=input_features, keys=self.annotation_keys)
         for key, num_classes in zip(self.annotation_keys, self.number_of_classes):
-            input_features[key] = tf.keras.utils.to_categorical(input_features[key], num_classes)
+            y = input_features[key]
+            input_features[key] = tf.cast(tf.one_hot(tf.cast(y, tf.int32), num_classes), dtype=y.dtype)
         return input_features
 
 
