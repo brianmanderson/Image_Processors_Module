@@ -195,6 +195,26 @@ class Fuzzy_Segment_Liver_Lobes(ImageProcessor):
         return image_features
 
 
+class ReturnOutputs(ImageProcessor):
+    """
+    This should be your final image processor, this will turn your dictionary into a set of tensors
+    """
+    def __init__(self, input_keys=('image',), output_keys=('annotation',)):
+        self.input_keys = input_keys
+        self.output_keys = output_keys
+
+    def parse(self, image_features, *args, **kwargs):
+        inputs = []
+        outputs = []
+        _check_keys_(input_features=image_features, keys=self.input_keys + self.output_keys)
+        for key in self.input_keys:
+            inputs.append(image_features[key])
+        for key in self.output_keys:
+            outputs.append(image_features[key])
+        del image_features
+        return tuple(inputs), tuple(outputs)
+
+
 class Return_Outputs(ImageProcessor):
     '''
     No image processors should occur after this, this will turn your dictionary into a set of tensors, usually
