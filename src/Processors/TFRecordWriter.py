@@ -92,7 +92,7 @@ def return_example_proto(base_dictionary, image_dictionary_for_pickle=None, data
         elif type(data) is np.ndarray:
             for index, shape_value in enumerate(data.shape):
                 if '{}_size_{}'.format(key, index) not in base_dictionary:
-                    feature['{}_size_{}'.format(key, index)] = _int64_feature(tf.constant(shape_value, dtype='int64'))
+                    feature['{}_size_{}'.format(key, index)] = _int64_feature(int(shape_value))
                     image_dictionary_for_pickle['{}_size_{}'.format(key, index)] = tf.io.FixedLenFeature([], tf.int64)
             feature[key] = _bytes_feature(data.tostring())
             if key not in image_dictionary_for_pickle:
