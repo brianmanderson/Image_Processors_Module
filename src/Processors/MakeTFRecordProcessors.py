@@ -1290,18 +1290,18 @@ class Split_Disease_Into_Cubes(ImageProcessor):
                                                                                        bounding_box_expansion=
                                                                                        remainders)
                 image = image_base[z_start:z_stop, r_start:r_stop, c_start:c_stop]
-                min_images, min_rows, min_cols = self.cube_size
-                pads = [min_images - image.shape[0], min_rows - image.shape[1], min_cols - image.shape[2]]
+                pads = np.asarray([self.cube_size[i] - image.shape[i] % self.cube_size[i]
+                                   if image.shape[i] % self.cube_size[i] != 0 else 0 for i in range(3)])
                 if len(image.shape) > 3:
-                    pads += [0]
+                    pads = np.append(pads, [0])
                 pads = [[max([0, floor(i / 2)]), max([0, ceil(i / 2)])] for i in pads]
                 image = np.pad(image, pads, constant_values=np.min(image))
 
                 annotation = annotation_base[z_start:z_stop, r_start:r_stop, c_start:c_stop]
-                pads = [min_images - annotation.shape[0], min_rows - annotation.shape[1],
-                        min_cols - annotation.shape[2]]
+                pads = np.asarray([self.cube_size[i] - annotation.shape[i] % self.cube_size[i]
+                                   if annotation.shape[i] % self.cube_size[i] != 0 else 0 for i in range(3)])
                 if len(annotation.shape) > 3:
-                    pads += [0]
+                    pads = np.append(pads, [0])
                 pads = [[max([0, floor(i / 2)]), max([0, ceil(i / 2)])] for i in pads]
                 annotation = np.pad(annotation, pads)
                 if len(annotation.shape) > 3:
@@ -2315,7 +2315,7 @@ class Box_Images(ImageProcessor):
             pads = [min_images - annotation_cube.shape[0], min_rows - annotation_cube.shape[1],
                     min_cols - annotation_cube.shape[2]]
             if len(annotation.shape) > 3:
-                pads += [0]
+                pads = np.append(pads, [0])
             pads = [[max([0, floor(i / 2)]), max([0, ceil(i / 2)])] for i in pads]
             annotation_cube = np.pad(annotation_cube, pads)
             if len(annotation.shape) > 3:
@@ -2331,7 +2331,7 @@ class Box_Images(ImageProcessor):
             image = image[pads[0]:, pads[1]:, pads[2]:, ...]
             pads = [[i, 0] for i in input_features['z_r_c_start']]
             while len(image.shape) > len(pads):
-                pads += [[0, 0]]
+                pads = np.append(pads, [0, 0])
             image = np.pad(image, pads, constant_values=np.min(image))
             og_shape = input_features['og_shape']
             im_shape = image.shape
@@ -2347,7 +2347,7 @@ class Box_Images(ImageProcessor):
             im_shape = image.shape
             pads = [[0, og_shape[0] - im_shape[0]], [0, og_shape[1] - im_shape[1]], [0, og_shape[2] - im_shape[2]]]
             if len(image.shape) > 3:
-                pads += [[0, 0]]
+                pads = np.append(pads, [0, 0])
             image = np.pad(image, pads, constant_values=np.min(image))
             input_features[key] = image
         return input_features
