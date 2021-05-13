@@ -1290,22 +1290,23 @@ class Split_Disease_Into_Cubes(ImageProcessor):
                                                                                        bounding_box_expansion=
                                                                                        remainders)
                 image = image_base[z_start:z_stop, r_start:r_stop, c_start:c_stop]
+                annotation = annotation_base[z_start:z_stop, r_start:r_stop, c_start:c_stop]
                 pads = np.asarray([self.cube_size[i] - image.shape[i] % self.cube_size[i]
                                    if image.shape[i] % self.cube_size[i] != 0 else 0 for i in range(3)])
-                if len(image.shape) > 3:
-                    pads = np.append(pads, [0])
-                pads = [[max([0, floor(i / 2)]), max([0, ceil(i / 2)])] for i in pads]
-                image = np.pad(image, pads, constant_values=np.min(image))
+                if np.max(pads) != 0:
+                    if len(image.shape) > 3:
+                        pads = np.append(pads, [0])
+                    pads = [[max([0, floor(i / 2)]), max([0, ceil(i / 2)])] for i in pads]
+                    image = np.pad(image, pads, constant_values=np.min(image))
 
-                annotation = annotation_base[z_start:z_stop, r_start:r_stop, c_start:c_stop]
-                pads = np.asarray([self.cube_size[i] - annotation.shape[i] % self.cube_size[i]
-                                   if annotation.shape[i] % self.cube_size[i] != 0 else 0 for i in range(3)])
-                if len(annotation.shape) > 3:
-                    pads = np.append(pads, [0])
-                pads = [[max([0, floor(i / 2)]), max([0, ceil(i / 2)])] for i in pads]
-                annotation = np.pad(annotation, pads)
-                if len(annotation.shape) > 3:
-                    annotation[..., 0] = 1 - np.sum(annotation[..., 1:], axis=-1)
+                    pads = np.asarray([self.cube_size[i] - annotation.shape[i] % self.cube_size[i]
+                                       if annotation.shape[i] % self.cube_size[i] != 0 else 0 for i in range(3)])
+                    if len(annotation.shape) > 3:
+                        pads = np.append(pads, [0])
+                    pads = [[max([0, floor(i / 2)]), max([0, ceil(i / 2)])] for i in pads]
+                    annotation = np.pad(annotation, pads)
+                    if len(annotation.shape) > 3:
+                        annotation[..., 0] = 1 - np.sum(annotation[..., 1:], axis=-1)
                 stack_image, stack_annotation = [image[None, ...]], [annotation[None, ...]]
                 for axis in range(3):
                     output_images = []
