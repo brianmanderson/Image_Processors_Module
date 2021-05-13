@@ -1290,8 +1290,22 @@ class Split_Disease_Into_Cubes(ImageProcessor):
                                                                                        bounding_box_expansion=
                                                                                        remainders)
                 image = image_base[z_start:z_stop, r_start:r_stop, c_start:c_stop]
-                annotation = annotation_base[z_start:z_stop, r_start:r_stop, c_start:c_stop]
+                min_images, min_rows, min_cols = self.cube_size
+                pads = [min_images - image.shape[0], min_rows - image.shape[1], min_cols - image.shape[2]]
+                if len(image.shape) > 3:
+                    pads += [0]
+                pads = [[max([0, floor(i / 2)]), max([0, ceil(i / 2)])] for i in pads]
+                image = np.pad(image, pads, constant_values=np.min(image))
 
+                annotation = annotation_base[z_start:z_stop, r_start:r_stop, c_start:c_stop]
+                pads = [min_images - annotation.shape[0], min_rows - annotation.shape[1],
+                        min_cols - annotation.shape[2]]
+                if len(annotation.shape) > 3:
+                    pads += [0]
+                pads = [[max([0, floor(i / 2)]), max([0, ceil(i / 2)])] for i in pads]
+                annotation = np.pad(annotation, pads)
+                if len(annotation.shape) > 3:
+                    annotation[..., 0] = 1 - np.sum(annotation[..., 1:], axis=-1)
                 stack_image, stack_annotation = [image[None, ...]], [annotation[None, ...]]
                 for axis in range(3):
                     output_images = []
