@@ -2332,9 +2332,9 @@ class Box_Images(ImageProcessor):
             image = input_features[key]
             pads = input_features['pads']
             image = image[pads[0]:, pads[1]:, pads[2]:, ...]
-            pads = [[i, 0] for i in input_features['z_r_c_start']]
+            pads = [(i, 0) for i in input_features['z_r_c_start']]
             while len(image.shape) > len(pads):
-                pads = np.append(pads, [0, 0])
+                pads += [(0, 0)]
             image = np.pad(image, pads, constant_values=np.min(image))
             og_shape = input_features['og_shape']
             im_shape = image.shape
@@ -2348,9 +2348,9 @@ class Box_Images(ImageProcessor):
                 dif = og_shape[2] - im_shape[2]
                 image = image[:, :, :dif]
             im_shape = image.shape
-            pads = [[0, og_shape[0] - im_shape[0]], [0, og_shape[1] - im_shape[1]], [0, og_shape[2] - im_shape[2]]]
+            pads = [(0, og_shape[0] - im_shape[0]), (0, og_shape[1] - im_shape[1]), (0, og_shape[2] - im_shape[2])]
             if len(image.shape) > 3:
-                pads = np.append(pads, [0, 0])
+                pads += [(0, 0)]
             image = np.pad(image, pads, constant_values=np.min(image))
             input_features[key] = image
         return input_features
