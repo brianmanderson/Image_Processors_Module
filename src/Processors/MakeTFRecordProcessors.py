@@ -2309,6 +2309,8 @@ class Box_Images(ImageProcessor):
                     pad_value = self.pad_value
                 else:
                     pad_value = np.min(image_cube)
+                while len(image_cube.shape) > pads:
+                    pads += [[0, 0]]
                 image_cube = np.pad(image_cube, pads, constant_values=pad_value)
                 input_features[key] = image_cube.astype(image.dtype)
                 input_features['pads'] = [pads[i][0] for i in range(3)]
