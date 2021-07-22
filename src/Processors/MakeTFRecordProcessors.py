@@ -1578,8 +1578,13 @@ class DistributeIntoCubes(ImageProcessor):
                     primary_array = input_features[image_key]
                     primary_array_cube = primary_array[z_start:z_stop, r_start:r_stop, c_start:c_stop]
                     if np.max(pads) > 0:
-                        primary_array_cube = np.pad(primary_array_cube, pads,
-                                                    constant_values=np.min(primary_array_cube))
+                        if len(primary_array_cube.shape) > len(pads):
+                            primary_array_cube = np.pad(primary_array_cube, pads + [[0, 0]],
+                                                        constant_values=np.min(primary_array_cube))
+                        else:
+                            primary_array_cube = np.pad(primary_array_cube, pads,
+                                                        constant_values=np.min(primary_array_cube))
+
                     temp_feature[image_key] = primary_array_cube
 
                 temp_feature['z_start'] = z_start
