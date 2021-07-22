@@ -1580,8 +1580,8 @@ class DistributeIntoCubes(ImageProcessor):
                 temp_feature['r_start_pad'] = r_start_pad
                 temp_feature['c_start'] = c_start
                 temp_feature['c_start_pad'] = c_start_pad
-                primary_liver_cube[primary_liver_cube > 0] = 1  # Make it so we have liver at 1, and disease as 2
-                primary_liver_cube[index_mask == 1] = 2
+                # primary_liver_cube[primary_liver_cube > 0] = 1  # Make it so we have liver at 1, and disease as 2
+                # primary_liver_cube[index_mask == 1] = 2
                 primary_liver_cube = primary_liver_cube.astype('int8')
                 temp_feature[self.out_mask_name] = primary_liver_cube
                 if self.wanted_keys is not None:
