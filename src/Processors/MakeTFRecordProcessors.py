@@ -667,27 +667,11 @@ class Resampler(ImageProcessor):
             if output_spacing != input_spacing:
                 if self.verbose:
                     print('Resampling {} to {}'.format(input_spacing, output_spacing))
-                if image_array is None:
-                    image_array = sitk.GetArrayFromImage(image_handle)
-                if len(image_array.shape) == 3:
-                    image_handle = resampler.resample_image(input_image_handle=image_handle,
-                                                            output_spacing=output_spacing,
-                                                            interpolator=interpolator)
-                    input_features[key] = image_handle
-                    input_features['{}_spacing'.format(key)] = np.asarray(self.desired_output_spacing, dtype='float32')
-                else:
-                    output = []
-                    for i in range(image_array.shape[-1]):
-                        reduced_handle = sitk.GetImageFromArray(image_array[..., i])
-                        reduced_handle.SetSpacing(input_spacing)
-                        resampled_handle = resampler.resample_image(input_image_handle=reduced_handle,
-                                                                    output_spacing=output_spacing,
-                                                                    interpolator=interpolator)
-                        output.append(sitk.GetArrayFromImage(resampled_handle)[..., None])
-                    stacked = np.concatenate(output, axis=-1)
-                    stacked[..., 0] = 1 - np.sum(stacked[..., 1:], axis=-1)
-                    input_features[key] = stacked
-                    input_features['{}_spacing'.format(key)] = np.asarray(self.desired_output_spacing, dtype='float32')
+                image_handle = resampler.resample_image(input_image_handle=image_handle,
+                                                        output_spacing=output_spacing,
+                                                        interpolator=interpolator)
+                input_features[key] = image_handle
+                input_features['{}_spacing'.format(key)] = np.asarray(self.desired_output_spacing, dtype='float32')
         return input_features
 
     def post_process(self, input_features):
