@@ -1493,13 +1493,20 @@ class AddLiverKey(ImageProcessor):
 class DistributeIntoCubes(ImageProcessor):
     def __init__(self, rows=128, cols=128, images=32, resize_keys_tuple=None, wanted_keys=('spacing', ),
                  image_keys=('primary_image', 'secondary_image_deformed'), mask_key='primary_mask',
-                 mask_value=1, out_mask_name='primary_liver'):
+                 mask_value=1, channel_value=None, out_mask_name='primary_liver'):
+        """
+        mask_value = int, value to reference as the mask
+        channel_value = int, channel to reference as the mask, should be None if mask_value is not None
+        """
+        if channel_value is not None:
+            assert mask_value is None, 'If you are using channel_value, mask_value should be None'
         self.rows, self.cols, self.images = rows, cols, images
         self.resize_keys_tuple = resize_keys_tuple
         self.wanted_keys = wanted_keys
         self.image_keys = image_keys
         self.mask_key = mask_key
         self.mask_value = mask_value
+        self.channel_value = channel_value
         self.out_mask_name = out_mask_name
     """
     Highly specialized for the task of model prediction, likely won't be useful for others
@@ -1515,8 +1522,10 @@ class DistributeIntoCubes(ImageProcessor):
         Connected_Component_Filter = sitk.ConnectedComponentImageFilter()
         Connected_Component_Filter.FullyConnectedOn()
         stats = sitk.LabelShapeStatisticsImageFilter()
-
-        cube_image = sitk.GetImageFromArray((primary_mask == self.mask_value).astype('int'))
+        if self.channel_value is None:
+            cube_image = sitk.GetImageFromArray((primary_mask == self.mask_value).astype('int'))
+        else:
+            cube_image = sitk.GetImageFromArray((primary_mask[..., self.channel_value]).astype('int'))
         connected_image = Connected_Component_Filter.Execute(cube_image)
         stats.Execute(connected_image)
         labels = [l for l in stats.GetLabels()]
