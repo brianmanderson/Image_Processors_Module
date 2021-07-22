@@ -1266,7 +1266,8 @@ class Split_Disease_Into_Cubes(ImageProcessor):
     def pre_process(self, input_features):
         _check_keys_(input_features=input_features, keys=(self.image_key, self.annotation_key))
         if 'bounding_boxes_{}'.format(self.disease_annotation) not in input_features:
-            Add_Bounding_Box = Add_Bounding_Box_Indexes([self.disease_annotation], add_to_dictionary=False)
+            Add_Bounding_Box = Add_Bounding_Box_Indexes([self.disease_annotation], add_to_dictionary=False,
+                                                        label_name=self.annotation_key)
             input_features = Add_Bounding_Box.pre_process(input_features)
         if 'bounding_boxes_{}'.format(self.disease_annotation) in input_features:
             bounding_boxes = input_features['bounding_boxes_{}'.format(self.disease_annotation)]
@@ -1333,7 +1334,7 @@ class Split_Disease_Into_Cubes(ImageProcessor):
                     for key in input_features:  # Bring along anything else we care about
                         if key not in temp_feature.keys():
                             temp_feature[key] = input_features[key]
-                    out_features['Disease_Box_{}_{}'.format(cube_index, box_index)] = temp_feature
+                    out_features['Box_{}_{}'.format(cube_index, box_index)] = temp_feature
             input_features = out_features
         return input_features
 
