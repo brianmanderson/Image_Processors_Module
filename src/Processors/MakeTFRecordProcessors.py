@@ -673,7 +673,7 @@ class Resampler(ImageProcessor):
                     image_handle = resampler.resample_image(input_image_handle=image_handle,
                                                             output_spacing=output_spacing,
                                                             interpolator=interpolator)
-                    input_features[key] = sitk.GetArrayFromImage(image_handle)
+                    input_features[key] = image_handle
                     input_features['{}_spacing'.format(key)] = np.asarray(self.desired_output_spacing, dtype='float32')
                 else:
                     output = []
