@@ -667,27 +667,11 @@ class Resampler(ImageProcessor):
             if output_spacing != input_spacing:
                 if self.verbose:
                     print('Resampling {} to {}'.format(input_spacing, output_spacing))
-                if image_array is None:
-                    image_array = sitk.GetArrayFromImage(image_handle)
-                if len(image_array.shape) == 3:
-                    image_handle = resampler.resample_image(input_image_handle=image_handle,
-                                                            output_spacing=output_spacing,
-                                                            interpolator=interpolator)
-                    input_features[key] = sitk.GetArrayFromImage(image_handle)
-                    input_features['{}_spacing'.format(key)] = np.asarray(self.desired_output_spacing, dtype='float32')
-                else:
-                    output = []
-                    for i in range(image_array.shape[-1]):
-                        reduced_handle = sitk.GetImageFromArray(image_array[..., i])
-                        reduced_handle.SetSpacing(input_spacing)
-                        resampled_handle = resampler.resample_image(input_image_handle=reduced_handle,
-                                                                    output_spacing=output_spacing,
-                                                                    interpolator=interpolator)
-                        output.append(sitk.GetArrayFromImage(resampled_handle)[..., None])
-                    stacked = np.concatenate(output, axis=-1)
-                    stacked[..., 0] = 1 - np.sum(stacked[..., 1:], axis=-1)
-                    input_features[key] = stacked
-                    input_features['{}_spacing'.format(key)] = np.asarray(self.desired_output_spacing, dtype='float32')
+                image_handle = resampler.resample_image(input_image_handle=image_handle,
+                                                        output_spacing=output_spacing,
+                                                        interpolator=interpolator)
+                input_features[key] = image_handle
+                input_features['{}_spacing'.format(key)] = np.asarray(self.desired_output_spacing, dtype='float32')
         return input_features
 
     def post_process(self, input_features):
@@ -810,7 +794,7 @@ class Ensure_Image_Proportions(ImageProcessor):
             else:
                 self.og_rows, self.og_cols = og_image_size[-2], og_image_size[-1]
             self.resize = False
-            self.pad = False
+            self.pads = None
             if self.og_rows != self.wanted_rows or self.og_cols != self.wanted_cols:
                 self.resize = True
                 if str(images.dtype).find('int') != -1:
@@ -824,15 +808,16 @@ class Ensure_Image_Proportions(ImageProcessor):
                 self.pre_pad_rows, self.pre_pad_cols = images.shape[1], images.shape[2]
                 if self.wanted_rows != self.pre_pad_rows or self.wanted_cols != self.pre_pad_cols:
                     print('Padding {} to {}'.format(self.pre_pad_rows, self.wanted_rows))
-                    self.pad = True
-                    images = [np.resize(i, new_shape=(self.wanted_rows, self.wanted_cols, images.shape[-1]))[None, ...] for
-                              i in images]
-                    images = np.concatenate(images, axis=0)
+                    self.pads = [0, self.wanted_rows - images.shape[1], self.wanted_cols - images.shape[2]]
+                    if len(images.shape) == 4:
+                        self.pads.append(0)
+                    self.pads = [[max([0, floor(i / 2)]), max([0, ceil(i / 2)])] for i in self.pads]
+                    images = np.pad(images, pad_width=self.pads, constant_values=np.min(images))
             input_features[key] = images
         return input_features
 
     def post_process(self, input_features):
-        if not self.pad and not self.resize:
+        if self.pads is not None and not self.resize:
             return input_features
         _check_keys_(input_features=input_features, keys=self.post_process_keys)
         for key in self.post_process_keys:
@@ -842,9 +827,10 @@ class Ensure_Image_Proportions(ImageProcessor):
             else:
                 out_dtype = pred.dtype
             pred = pred.astype('float32')
-            if self.pad:
-                pred = [np.resize(i, new_shape=(self.pre_pad_rows, self.pre_pad_cols, pred.shape[-1])) for i in pred]
-                pred = np.concatenate(pred, axis=0)
+            if self.pads is not None:
+                pred = pred[self.pads[0][0]:pred.shape[0] - self.pads[0][1],
+                            self.pads[1][0]:pred.shape[1] - self.pads[1][1],
+                            self.pads[2][0]:pred.shape[2] - self.pads[2][1]]
             if self.resize:
                 pred = [image_resize(i, self.og_rows, self.og_cols, inter=cv2.INTER_LINEAR)[None, ...] for i in pred]
                 pred = np.concatenate(pred, axis=0)
@@ -1266,7 +1252,8 @@ class Split_Disease_Into_Cubes(ImageProcessor):
     def pre_process(self, input_features):
         _check_keys_(input_features=input_features, keys=(self.image_key, self.annotation_key))
         if 'bounding_boxes_{}'.format(self.disease_annotation) not in input_features:
-            Add_Bounding_Box = Add_Bounding_Box_Indexes([self.disease_annotation], add_to_dictionary=False)
+            Add_Bounding_Box = Add_Bounding_Box_Indexes([self.disease_annotation], add_to_dictionary=False,
+                                                        label_name=self.annotation_key)
             input_features = Add_Bounding_Box.pre_process(input_features)
         if 'bounding_boxes_{}'.format(self.disease_annotation) in input_features:
             bounding_boxes = input_features['bounding_boxes_{}'.format(self.disease_annotation)]
@@ -1333,7 +1320,7 @@ class Split_Disease_Into_Cubes(ImageProcessor):
                     for key in input_features:  # Bring along anything else we care about
                         if key not in temp_feature.keys():
                             temp_feature[key] = input_features[key]
-                    out_features['Disease_Box_{}_{}'.format(cube_index, box_index)] = temp_feature
+                    out_features['Box_{}_{}'.format(cube_index, box_index)] = temp_feature
             input_features = out_features
         return input_features
 
@@ -1493,13 +1480,20 @@ class AddLiverKey(ImageProcessor):
 class DistributeIntoCubes(ImageProcessor):
     def __init__(self, rows=128, cols=128, images=32, resize_keys_tuple=None, wanted_keys=('spacing', ),
                  image_keys=('primary_image', 'secondary_image_deformed'), mask_key='primary_mask',
-                 mask_value=1, out_mask_name='primary_liver'):
+                 mask_value=1, channel_value=None, out_mask_name='primary_liver'):
+        """
+        mask_value = int, value to reference as the mask
+        channel_value = int, channel to reference as the mask, should be None if mask_value is not None
+        """
+        if channel_value is not None:
+            assert mask_value is None, 'If you are using channel_value, mask_value should be None'
         self.rows, self.cols, self.images = rows, cols, images
         self.resize_keys_tuple = resize_keys_tuple
         self.wanted_keys = wanted_keys
         self.image_keys = image_keys
         self.mask_key = mask_key
         self.mask_value = mask_value
+        self.channel_value = channel_value
         self.out_mask_name = out_mask_name
     """
     Highly specialized for the task of model prediction, likely won't be useful for others
@@ -1515,8 +1509,10 @@ class DistributeIntoCubes(ImageProcessor):
         Connected_Component_Filter = sitk.ConnectedComponentImageFilter()
         Connected_Component_Filter.FullyConnectedOn()
         stats = sitk.LabelShapeStatisticsImageFilter()
-
-        cube_image = sitk.GetImageFromArray((primary_mask == self.mask_value).astype('int'))
+        if self.channel_value is None:
+            cube_image = sitk.GetImageFromArray((primary_mask == self.mask_value).astype('int'))
+        else:
+            cube_image = sitk.GetImageFromArray((primary_mask[..., self.channel_value]).astype('int'))
         connected_image = Connected_Component_Filter.Execute(cube_image)
         stats.Execute(connected_image)
         labels = [l for l in stats.GetLabels()]
@@ -1569,8 +1565,13 @@ class DistributeIntoCubes(ImageProcessor):
                     primary_array = input_features[image_key]
                     primary_array_cube = primary_array[z_start:z_stop, r_start:r_stop, c_start:c_stop]
                     if np.max(pads) > 0:
-                        primary_array_cube = np.pad(primary_array_cube, pads,
-                                                    constant_values=np.min(primary_array_cube))
+                        if len(primary_array_cube.shape) > len(pads):
+                            primary_array_cube = np.pad(primary_array_cube, pads + [[0, 0]],
+                                                        constant_values=np.min(primary_array_cube))
+                        else:
+                            primary_array_cube = np.pad(primary_array_cube, pads,
+                                                        constant_values=np.min(primary_array_cube))
+
                     temp_feature[image_key] = primary_array_cube
 
                 temp_feature['z_start'] = z_start
@@ -1580,8 +1581,8 @@ class DistributeIntoCubes(ImageProcessor):
                 temp_feature['r_start_pad'] = r_start_pad
                 temp_feature['c_start'] = c_start
                 temp_feature['c_start_pad'] = c_start_pad
-                primary_liver_cube[primary_liver_cube > 0] = 1  # Make it so we have liver at 1, and disease as 2
-                primary_liver_cube[index_mask == 1] = 2
+                # primary_liver_cube[primary_liver_cube > 0] = 1  # Make it so we have liver at 1, and disease as 2
+                # primary_liver_cube[index_mask == 1] = 2
                 primary_liver_cube = primary_liver_cube.astype('int8')
                 temp_feature[self.out_mask_name] = primary_liver_cube
                 if self.wanted_keys is not None:
