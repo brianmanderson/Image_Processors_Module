@@ -216,15 +216,12 @@ class ReturnOutputs(ImageProcessor):
 
 
 class Return_Outputs(ImageProcessor):
-    '''
-    No image processors should occur after this, this will turn your dictionary into a set of tensors, usually
-    image, annotation
-    '''
-
     def __init__(self, wanted_keys_dict={'inputs': ('image',), 'outputs': ('annotation',)}):
         assert type(wanted_keys_dict) is dict, 'You need to pass a dictionary to Return_Outputs in the form of ' \
                                                '{"inputs":["image"],"outputs":["annotation"]}, etc.'
         self.wanted_keys_dict = wanted_keys_dict
+        print('Return_Outputs is deprecated! Please move to ReturnOutputs and specifically define desired '
+              'input_keys and output_keys')
 
     def parse(self, image_features, *args, **kwargs):
         inputs = []
