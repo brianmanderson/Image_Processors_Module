@@ -1232,7 +1232,7 @@ class N4BiasCorrection(ImageProcessor):
 
 class Split_Disease_Into_Cubes(ImageProcessor):
     def __init__(self, disease_annotation=None, cube_size=(16, 120, 120), min_voxel_volume=0, max_voxels=np.inf,
-                 image_key='image', annotation_key='annotation'):
+                 image_key='image', annotation_key='annotation', minimum_percentage=0.):
         """
         :param disease_annotation:
         :param cube_size:
@@ -1240,6 +1240,7 @@ class Split_Disease_Into_Cubes(ImageProcessor):
         :param max_voxels:
         :param image_key:
         :param annotation_key:
+        :param minimum_percentage: a minimum percentage of the image to be filled with a contour to be passed along
         """
         self.disease_annotation = disease_annotation
         self.cube_size = np.asarray(cube_size)
@@ -1247,6 +1248,7 @@ class Split_Disease_Into_Cubes(ImageProcessor):
         self.max_voxels = max_voxels
         self.image_key = image_key
         self.annotation_key = annotation_key
+        self.minimum_percentage = minimum_percentage
         assert disease_annotation is not None, 'Provide an integer for what is disease'
 
     def pre_process(self, input_features):
@@ -1315,6 +1317,11 @@ class Split_Disease_Into_Cubes(ImageProcessor):
                 for box_index, [image_cube, annotation_cube] in enumerate(zip(stack_image, stack_annotation)):
                     temp_feature = OrderedDict()
                     image_cube, annotation_cube = image_cube[0], annotation_cube[0]
+                    argmax_annotation = np.argmax(annotation_cube, axis=-1)
+                    number_of_contours = np.sum(argmax_annotation > 0)
+                    percentage = number_of_contours / np.prod(argmax_annotation.shape) * 100
+                    if percentage < self.minimum_percentage:
+                        continue
                     temp_feature[self.image_key] = image_cube[:self.cube_size[0]]
                     temp_feature[self.annotation_key] = annotation_cube[:self.cube_size[0]]
                     for key in input_features:  # Bring along anything else we care about
