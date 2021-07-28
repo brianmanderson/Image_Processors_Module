@@ -794,7 +794,7 @@ class Ensure_Image_Proportions(ImageProcessor):
             else:
                 self.og_rows, self.og_cols = og_image_size[-2], og_image_size[-1]
             self.resize = False
-            self.pad = False
+            self.pads = None
             if self.og_rows != self.wanted_rows or self.og_cols != self.wanted_cols:
                 self.resize = True
                 if str(images.dtype).find('int') != -1:
@@ -808,15 +808,16 @@ class Ensure_Image_Proportions(ImageProcessor):
                 self.pre_pad_rows, self.pre_pad_cols = images.shape[1], images.shape[2]
                 if self.wanted_rows != self.pre_pad_rows or self.wanted_cols != self.pre_pad_cols:
                     print('Padding {} to {}'.format(self.pre_pad_rows, self.wanted_rows))
-                    self.pad = True
-                    images = [np.resize(i, new_shape=(self.wanted_rows, self.wanted_cols, images.shape[-1]))[None, ...] for
-                              i in images]
-                    images = np.concatenate(images, axis=0)
+                    self.pads = [0, self.wanted_rows - images.shape[1], self.wanted_cols - images.shape[2]]
+                    if len(images.shape) == 4:
+                        self.pads.append(0)
+                    self.pads = [[max([0, floor(i / 2)]), max([0, ceil(i / 2)])] for i in self.pads]
+                    images = np.pad(images, pad_width=self.pads, constant_values=np.min(images))
             input_features[key] = images
         return input_features
 
     def post_process(self, input_features):
-        if not self.pad and not self.resize:
+        if self.pads is not None and not self.resize:
             return input_features
         _check_keys_(input_features=input_features, keys=self.post_process_keys)
         for key in self.post_process_keys:
@@ -826,9 +827,10 @@ class Ensure_Image_Proportions(ImageProcessor):
             else:
                 out_dtype = pred.dtype
             pred = pred.astype('float32')
-            if self.pad:
-                pred = [np.resize(i, new_shape=(self.pre_pad_rows, self.pre_pad_cols, pred.shape[-1])) for i in pred]
-                pred = np.concatenate(pred, axis=0)
+            if self.pads is not None:
+                pred = pred[self.pads[0][0]:pred.shape[0] - self.pads[0][1],
+                            self.pads[1][0]:pred.shape[1] - self.pads[1][1],
+                            self.pads[2][0]:pred.shape[2] - self.pads[2][1]]
             if self.resize:
                 pred = [image_resize(i, self.og_rows, self.og_cols, inter=cv2.INTER_LINEAR)[None, ...] for i in pred]
                 pred = np.concatenate(pred, axis=0)
