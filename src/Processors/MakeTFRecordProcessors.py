@@ -8,7 +8,7 @@ sys.path.append(
 import SimpleITK as sitk
 import numpy as np
 from _collections import OrderedDict
-from Resample_Class.src.NiftiResampler.ResampleTools import ImageResampler
+from NiftiResampler.ResampleTools import ImageResampler
 from scipy.ndimage.filters import gaussian_filter
 import copy
 from math import ceil, floor
