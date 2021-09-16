@@ -12,7 +12,7 @@ import cv2, math, copy, os, sys
 from skimage.measure import block_reduce
 from Fill_In_Segments_sitk import Fill_Missing_Segments
 from Resample_Class.src.NiftiResampler.ResampleTools import Resample_Class_Object, sitk
-from Plot_And_Scroll_Images.Plot_Scroll_Images import plot_scroll_Image, plt
+from PlotScrollNumpyArrays.Plot_Scroll_Images import plot_scroll_Image, plt
 '''
 Description of code
 Annotations_To_Categorical(num_classes): classes for annotations to be turned into

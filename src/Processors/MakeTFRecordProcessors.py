@@ -14,7 +14,7 @@ import copy
 from math import ceil, floor
 import cv2
 from skimage import morphology
-from Plot_And_Scroll_Images.Plot_Scroll_Images import plot_scroll_Image, plt
+from PlotScrollNumpyArrays.Plot_Scroll_Images import plot_scroll_Image, plt
 
 
 def _check_keys_(input_features, keys):
