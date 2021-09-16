@@ -1,6 +1,3 @@
 [submodule "Fill_Missing_Segments"]
 	path = Fill_Missing_Segments
 	url = https://github.com/brianmanderson/Fill_Missing_Segments.git
-[submodule "Resample_Class"]
-	path = Resample_Class
-	url = https://github.com/brianmanderson/Resample_Class.git
