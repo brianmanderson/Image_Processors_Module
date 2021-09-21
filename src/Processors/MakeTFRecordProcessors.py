@@ -2290,8 +2290,10 @@ class Box_Images(ImageProcessor):
             input_features['mask'] = mask
             add_indexes.pre_process(input_features)
             del input_features['mask']
+            min_max_bbox = tuple([thing([i[j] for i in input_features['bounding_boxes_{}'.format(val)]])
+                                  for j, thing in zip(range(6), [max, min, max, min, max, min])])
             z_start, z_stop, r_start, r_stop, c_start, c_stop = add_bounding_box_to_dict(
-                input_features['bounding_boxes_{}'.format(val)][0], return_indexes=True)
+                min_max_bbox, return_indexes=True)
 
             z_start, z_stop, r_start, r_stop, c_start, c_stop = expand_box_indexes(z_start, z_stop, r_start, r_stop,
                                                                                    c_start, c_stop,
