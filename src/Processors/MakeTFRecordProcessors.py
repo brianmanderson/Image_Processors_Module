@@ -2251,7 +2251,7 @@ class Box_Images(ImageProcessor):
     def __init__(self, image_keys=('image',), annotation_key='annotation', wanted_vals_for_bbox=None,
                  bounding_box_expansion=(5, 10, 10), power_val_z=1, power_val_r=1,
                  power_val_c=1, min_images=None, min_rows=None, min_cols=None,
-                 post_process_keys=('image', 'annotation', 'prediction'), pad_value=None):
+                 post_process_keys=('image', 'annotation', 'prediction'), pad_value=None, on_needles=False):
         """
         :param image_keys: keys which corresponds to an image to be normalized
         :param annotation_key: key which corresponds to an annotation image used for normalization
@@ -2263,6 +2263,7 @@ class Box_Images(ImageProcessor):
         :param min_images:
         :param min_rows:
         :param min_cols:
+        :param on_needles: arbitrary addition to allow me to only keep digitized parts of needles
         """
         assert type(wanted_vals_for_bbox) in [list, tuple], 'Provide a list for bboxes'
         self.wanted_vals_for_bbox = wanted_vals_for_bbox
@@ -2272,6 +2273,7 @@ class Box_Images(ImageProcessor):
         self.image_keys, self.annotation_key = image_keys, annotation_key
         self.post_process_keys = post_process_keys
         self.pad_value = pad_value
+        self.on_needles = on_needles
 
     def pre_process(self, input_features):
         _check_keys_(input_features=input_features, keys=self.image_keys + (self.annotation_key,))
@@ -2290,10 +2292,8 @@ class Box_Images(ImageProcessor):
             input_features['mask'] = mask
             add_indexes.pre_process(input_features)
             del input_features['mask']
-            min_max_bbox = tuple([thing([i[j] for i in input_features['bounding_boxes_{}'.format(val)]])
-                                  for j, thing in zip(range(6), [max, min, max, min, max, min])])
             z_start, z_stop, r_start, r_stop, c_start, c_stop = add_bounding_box_to_dict(
-                min_max_bbox, return_indexes=True)
+                input_features['bounding_boxes_{}'.format(val)], return_indexes=True, on_needles=self.on_needles)
 
             z_start, z_stop, r_start, r_stop, c_start, c_stop = expand_box_indexes(z_start, z_stop, r_start, r_stop,
                                                                                    c_start, c_stop,
@@ -2465,20 +2465,33 @@ class Add_Bounding_Box_Indexes(ImageProcessor):
                 bounding_boxes, voxel_volumes = get_bounding_boxes(sitk.GetImageFromArray(annotation), temp_val)
                 input_features['voxel_volumes_{}'.format(val)] = voxel_volumes
                 input_features['bounding_boxes_{}'.format(val)] = bounding_boxes
-                min_max_bbox = tuple([thing([i[j] for i in bounding_boxes])
-                                      for j, thing in zip(range(6), [max, min, max, min, max, min])])
-                input_features = add_bounding_box_to_dict(input_features=input_features, bounding_box=min_max_bbox,
+                input_features = add_bounding_box_to_dict(input_features=input_features, bounding_box=bounding_boxes,
                                                           val=val, return_indexes=False,
                                                           add_to_dictionary=self.add_to_dictionary)
         return input_features
 
 
 def add_bounding_box_to_dict(bounding_box, input_features=None, val=None, return_indexes=False,
-                             add_to_dictionary=False):
-    c_start, r_start, z_start, c_stop, r_stop, z_stop = bounding_box
-    z_stop, r_stop, c_stop = z_start + z_stop, r_start + r_stop, c_start + c_stop
-    if return_indexes:
-        return z_start, z_stop, r_start, r_stop, c_start, c_stop
+                             add_to_dictionary=False, on_needles=False):
+    if type(bounding_box) is list:
+        c_start_list, c_stop_list, r_start_list, r_stop_list, z_start_list, z_stop_list = [], [], [], [], [], []
+        for bbox in bounding_box:
+            c_start, r_start, z_start, c_stop, r_stop, z_stop = bbox
+            z_stop, r_stop, c_stop = z_start + z_stop, r_start + r_stop, c_start + c_stop
+            c_start_list.append(c_start)
+            c_stop_list.append(c_stop)
+            r_start_list.append(r_start)
+            r_stop_list.append(r_stop)
+            z_start_list.append(z_start)
+            z_stop_list.append(z_stop)
+        c_start, c_stop, r_start, r_stop, z_start, z_stop = min(c_start_list), max(c_stop_list), min(r_start_list), \
+                                                            max(r_stop_list), min(z_start_list), max(z_stop_list)
+        if on_needles:
+            z_start = max(z_start_list)  # Only take the minimum digitization!
+
+    else:
+        c_start, r_start, z_start, c_stop, r_stop, z_stop = bounding_box
+        z_stop, r_stop, c_stop = z_start + z_stop, r_start + r_stop, c_start + c_stop
     if add_to_dictionary:
         input_features['bounding_boxes_z_start_{}'.format(val)] = z_start
         input_features['bounding_boxes_r_start_{}'.format(val)] = r_start
@@ -2486,6 +2499,8 @@ def add_bounding_box_to_dict(bounding_box, input_features=None, val=None, return
         input_features['bounding_boxes_z_stop_{}'.format(val)] = z_stop
         input_features['bounding_boxes_r_stop_{}'.format(val)] = r_stop
         input_features['bounding_boxes_c_stop_{}'.format(val)] = c_stop
+    if return_indexes:
+        return z_start, z_stop, r_start, r_stop, c_start, c_stop
     return input_features
 
 

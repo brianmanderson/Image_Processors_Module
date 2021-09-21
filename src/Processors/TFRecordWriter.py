@@ -3,7 +3,7 @@ __author__ = 'Brian M Anderson'
 import sys
 import os.path
 sys.path.append(os.path.abspath(os.path.dirname(__file__)))
-import MakeTFRecordProcessors as Processors
+from PlotScrollNumpyArrays.Plot_Scroll_Images import plot_scroll_Image, plt
 import tensorflow as tf
 import pickle
 import os
