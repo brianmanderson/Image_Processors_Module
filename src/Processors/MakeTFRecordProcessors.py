@@ -12,6 +12,7 @@ from NiftiResampler.ResampleTools import ImageResampler
 from scipy.ndimage.filters import gaussian_filter
 import copy
 from math import ceil, floor
+import typing
 import cv2
 from skimage import morphology
 from PlotScrollNumpyArrays.Plot_Scroll_Images import plot_scroll_Image, plt
@@ -563,6 +564,29 @@ class AddSpacing(ImageProcessor):
 
     def pre_process(self, input_features):
         input_features['spacing'] = input_features[self.spacing_handle_key].GetSpacing()
+        return input_features
+
+
+class DilateNiftiiHandles(ImageProcessor):
+    def __init__(self, kernel_radius: typing.Tuple[float, float, float], dilate_keys=('annotation_handle',),
+                 kernel_type=sitk.sitkBall):
+        """
+        :param kernel_radius: tuple of the kernel radius to dilate, in row, column, z
+        :param dilate_keys: keys to dilate
+        :param kernel_type: type of kernel to use
+        """
+        self.dilate_filter = sitk.BinaryDilateImageFilter()
+        self.dilate_filter.SetKernelType(kernel_type)
+        self.dilate_filter.SetKernelRadius(kernel_radius)
+        self.dilate_keys = dilate_keys
+
+    def pre_process(self, input_features):
+        _check_keys_(input_features=input_features, keys=self.dilate_keys)
+        for key in self.dilate_keys:
+            mask_handle = input_features[key]
+            assert type(mask_handle) is sitk.Image, 'Pass a SimpleITK Image'
+            mask_handle = self.dilate_filter.Execute(mask_handle)
+            input_features[key] = mask_handle
         return input_features
 
 
@@ -2439,7 +2463,9 @@ class Add_Bounding_Box_Indexes(ImageProcessor):
                 bounding_boxes, voxel_volumes = get_bounding_boxes(sitk.GetImageFromArray(annotation), temp_val)
                 input_features['voxel_volumes_{}'.format(val)] = voxel_volumes
                 input_features['bounding_boxes_{}'.format(val)] = bounding_boxes
-                input_features = add_bounding_box_to_dict(input_features=input_features, bounding_box=bounding_boxes[0],
+                min_max_bbox = tuple([thing([i[j] for i in bounding_boxes])
+                                      for j, thing in zip(range(6), [max, min, max, min, max, min])])
+                input_features = add_bounding_box_to_dict(input_features=input_features, bounding_box=min_max_bbox,
                                                           val=val, return_indexes=False,
                                                           add_to_dictionary=self.add_to_dictionary)
         return input_features
