@@ -272,6 +272,21 @@ class Pad_Z_Images_w_Reflections(ImageProcessor):
         return image_features
 
 
+class RandomCrop(ImageProcessor):
+    def __init__(self, keys_to_crop=('image_array', 'annotation_array'), crop_dimensions=(32, 32, 32, 1)):
+        self.keys_to_crop = keys_to_crop
+        self.crop_dimensions = crop_dimensions
+
+    def parse(self, input_features, *args, **kwargs):
+        _check_keys_(input_features=input_features, keys=self.keys_to_crop)
+        seed = tf.random.uniform(shape=[2], maxval=999, dtype=tf.dtypes.int32)
+        for key in self.keys_to_crop:
+            image = input_features[key]
+            image = tf.image.stateless_random_crop(value=image, size=self.crop_dimensions, seed=seed)
+            input_features[key] = image
+        return input_features
+
+
 class Ensure_Image_Proportions(ImageProcessor):
     def __init__(self, image_rows=512, image_cols=512, preserve_aspect_ratio=False):
         self.image_rows = tf.constant(image_rows)
