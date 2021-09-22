@@ -2029,6 +2029,24 @@ class DivideByValues(ImageProcessor):
         return input_features
 
 
+class MultiplyByValues(ImageProcessor):
+    def __init__(self, image_keys=('image',), values=(1.,)):
+        """
+        :param image_keys: tuple of keys to multiply by the value
+        :param values: values by which to multiply by
+        """
+        self.image_keys = image_keys
+        self.values = values
+
+    def pre_process(self, input_features):
+        _check_keys_(input_features=input_features, keys=self.image_keys)
+        for key, value in zip(self.image_keys, self.values):
+            image_array = input_features[key]
+            image_array *= value
+            input_features[key] = image_array
+        return input_features
+
+
 class Fill_Binary_Holes(ImageProcessor):
     def __init__(self, prediction_key, dicom_handle_key):
         self.BinaryfillFilter = sitk.BinaryFillholeImageFilter()
