@@ -242,7 +242,7 @@ def return_data_dict(niftii_path):
 def parallel_record_writer(dictionary_list=None, out_path=None, max_records=np.inf, image_processors=None,
                            recordwriter=None, thread_count=int(cpu_count() * .5), niftii_path=None, rewrite=False,
                            is_3D=True, extension=np.inf, special_actions=False, verbose=False, file_parser=None,
-                           debug=False):
+                           debug=False, **kwargs):
     """
     :param niftii_path: path to where Overall_Data and mask files are located
     :param out_path: path that we will write records to
@@ -276,7 +276,7 @@ def parallel_record_writer(dictionary_list=None, out_path=None, max_records=np.i
         if file_parser is None:
             data_dict = return_data_dict(niftii_path=niftii_path)
         else:
-            data_dict = file_parser(**locals())
+            data_dict = file_parser(**locals(), **kwargs)
     else:
         data_dict = dictionary_list
     counter = 0
