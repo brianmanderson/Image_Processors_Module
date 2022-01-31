@@ -1188,6 +1188,18 @@ class SimpleITKImageToArray(NiftiToArray):
         super(SimpleITKImageToArray, self).__init__(nifti_keys=nifti_keys, out_keys=out_keys, dtypes=dtypes)
 
 
+class SplitArray(ImageProcessor):
+    def __init__(self, array_keys=('image_path', 'annotation_path'), out_keys=('image', 'annotation'),
+                 axis_index=(0, 1)):
+        self.array_keys, self.out_keys, self.axis_index = array_keys, out_keys, axis_index
+
+    def pre_process(self, input_features):
+        _check_keys_(input_features=input_features, keys=self.array_keys)
+        for array_key, out_key, axis_index in zip(self.array_keys, self.out_keys, self.axis_index):
+            input_features[out_key] = input_features[array_key][..., axis_index]
+        return input_features
+
+
 class Add_Dose(ImageProcessor):
     def pre_process(self, input_features):
         image_path = input_features['image_path']
