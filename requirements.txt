@@ -3,3 +3,5 @@ matplotlib
 SimpleITK
 PlotScrollNumpyArrays
 NiftiResampler
+scikit-image
+opencv-python
