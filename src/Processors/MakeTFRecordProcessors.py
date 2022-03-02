@@ -590,6 +590,45 @@ class DilateNiftiiHandles(ImageProcessor):
         return input_features
 
 
+class ResampleSITKHandlesToAnotherHandle(ImageProcessor):
+    def __init__(self, resample_keys=('image_handle', 'annotation_handle'),
+                 reference_handle_keys=('image_handle',), resample_interpolators=('Linear', 'Nearest'), verbose=True):
+        """
+        :param resample_keys: tuple of keys in input_features to resample
+        :param reference_handle_keys: a tuple of keys to resample to
+        :param verbose: binary, print when changing spacing
+        """
+        self.reference_handle_keys = reference_handle_keys
+        self.resample_keys = resample_keys
+        self.resample_interpolators = resample_interpolators
+        self.verbose = verbose
+
+    def pre_process(self, input_features):
+        resampler = ImageResampler()
+        _check_keys_(input_features=input_features, keys=self.resample_keys)
+        _check_keys_(input_features=input_features, keys=self.reference_handle_keys)
+        for key, reference_key, interpolator in zip(self.resample_keys, self.reference_handle_keys,
+                                                    self.resample_interpolators):
+            image_handle = input_features[key]
+            reference_handle = input_features[reference_key]
+            assert type(image_handle) is sitk.Image, 'Pass a SimpleITK Image'
+            input_spacing = image_handle.GetSpacing()
+            output_spacing = reference_handle.GetSpacing()
+            input_features['{}_original_spacing'.format(key)] = np.asarray(input_spacing, dtype='float32')
+            input_features['{}_output_spacing'.format(key)] = np.asarray(output_spacing, dtype='float32')
+            input_features['{}_original_size'.format(key)] = np.asarray(image_handle.GetSize(), dtype='float32')
+            input_features['output_spacing'] = np.asarray(output_spacing, dtype='float32')
+            if output_spacing != input_spacing or image_handle.GetSize() != reference_handle.GetSize():
+                if self.verbose:
+                    print('Resampling {} to {}'.format(input_spacing, output_spacing))
+                image_handle = resampler.resample_image(input_image_handle=image_handle,
+                                                        ref_resampling_handle=reference_handle,
+                                                        interpolator=interpolator)
+                input_features[key] = image_handle
+                input_features['{}_spacing'.format(key)] = np.asarray(output_spacing, dtype='float32')
+        return input_features
+
+
 class ResampleSITKHandles(ImageProcessor):
     def __init__(self, resample_keys=('image_handle', 'annotation_handle'),
                  resample_interpolators=('Linear', 'Nearest'),
