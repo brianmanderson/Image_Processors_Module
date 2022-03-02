@@ -176,7 +176,8 @@ class RecordWriter(object):
             filename = os.path.join(self.out_path, image_name)
             if not filename.endswith('.tfrecord'):
                 filename += '.tfrecord'
-            filename = filename.replace('.tfrecord', '_{}.tfrecord'.format(example_key))
+            split = os.path.split(filename)
+            filename = os.path.join(split[0], "{}_{}".format(example_key, split[1]))  # Example_key on the front
             if not os.path.exists(filename) or self.rewrite:
                 dictionary_to_tf_record(filename=filename, input_features=example)
 
