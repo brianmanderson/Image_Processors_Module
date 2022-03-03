@@ -381,6 +381,20 @@ class ToCategorical(ImageProcessor):
         return input_features
 
 
+class Squeeze(ImageProcessor):
+    def __init__(self, image_keys=('image',)):
+        """
+        Designed to squeeze tf arrays
+        :param image_keys:
+        """
+        self.image_keys = image_keys
+    def parse(self, image_features, *args, **kwargs):
+        _check_keys_(image_features, self.image_keys)
+        for key in self.image_keys:
+            image_features[key] = tf.squeeze(image_features[key])
+        return image_features
+
+
 class ExpandDimension(ImageProcessor):
     def __init__(self, axis=-1, image_keys=('image', 'annotation')):
         self.axis = axis
@@ -837,7 +851,7 @@ class Resize_with_crop_pad(ImageProcessor):
         :param image_cols: tuple of image columns
         :param is_mask: boolean for ensuring mask is correct
         """
-        print("Be careful.. this can severly slow down data retrieval, best to do these things while making the record")
+        print("Be careful..Resize with crop/pad can severely slow down data retrieval, best to do this and cache")
         self.keys = keys
         self.is_mask = is_mask
         self.image_rows = image_rows
