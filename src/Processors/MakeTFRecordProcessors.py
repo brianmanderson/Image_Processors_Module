@@ -2098,6 +2098,31 @@ class MultiplyByValues(ImageProcessor):
         return input_features
 
 
+class ChangeArrayByArgInArray(ImageProcessor):
+    def __init__(self, reference_keys=('image',), value_args=(np.max,),
+                 target_keys=('image',), change_args=(np.multiply,)):
+        """
+        :param reference_key: a key for a reference array
+        :param value_arg: a function to obtain some value from the reference array
+        :param target_key: a key for the target array to have a change_arg applied
+        :param change_arg: a function to apply some change
+        """
+        self.reference_keys = reference_keys
+        self.value_args = value_args
+        self.target_keys = target_keys
+        self.change_args = change_args
+
+    def pre_process(self, input_features):
+        _check_keys_(input_features=input_features, keys=self.reference_keys + self.target_keys)
+        for ref_key, value_arg, target_key, change_arg in zip(self.reference_keys, self.value_args,
+                                                              self.target_keys, self.change_args):
+            ref_array = input_features[ref_key]
+            target_array = input_features[target_key]
+            value = value_arg(ref_array)
+            input_features[target_key] = change_arg(target_array, value)
+        return input_features
+
+
 class Fill_Binary_Holes(ImageProcessor):
     def __init__(self, prediction_key, dicom_handle_key):
         self.BinaryfillFilter = sitk.BinaryFillholeImageFilter()
