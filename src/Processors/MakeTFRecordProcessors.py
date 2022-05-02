@@ -2487,12 +2487,13 @@ class Box_Images(ImageProcessor):
 class PadImages(ImageProcessor):
     def __init__(self, bounding_box_expansion=(10, 10, 10), power_val_z=1, power_val_x=1,
                  power_val_y=1, min_val=None, image_keys=('image', 'annotation'),
-                 post_process_keys=('image', 'annotation', 'prediction')):
+                 post_process_keys=('image', 'annotation', 'prediction'), mode='constant'):
         self.bounding_box_expansion = bounding_box_expansion
         self.min_val = min_val
         self.power_val_z, self.power_val_x, self.power_val_y = power_val_z, power_val_x, power_val_y
         self.image_keys = image_keys
         self.post_process_keys = post_process_keys
+        self.mode = mode
 
     def pre_process(self, input_features):
         _check_keys_(input_features=input_features, keys=self.image_keys)
@@ -2514,7 +2515,12 @@ class PadImages(ImageProcessor):
                 min_val = np.min(images)
             else:
                 min_val = self.min_val
-            images = np.pad(images, self.pad, constant_values=min_val)
+            if self.mode == 'constant':
+                images = np.pad(images, self.pad, constant_values=min_val)
+            elif self.mode == 'linear_ramp':
+                images = np.pad(images, self.pad, mode=self.mode, end_values=min_val)
+            else:
+                images = np.pad(images, self.pad, mode=self.mode)
             input_features[key] = images
         return input_features
 
