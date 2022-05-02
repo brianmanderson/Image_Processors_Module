@@ -6,7 +6,6 @@ import os.path
 sys.path.append(
     os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
 import tensorflow as tf
-from ConstantProcessors import _check_keys_, ImageProcessor
 import numpy as np
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
@@ -15,6 +14,21 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.framework import ops
 from PlotScrollNumpyArrays.Plot_Scroll_Images import plot_scroll_Image, plt
+
+
+def _check_keys_(input_features, keys):
+    if type(keys) is list or type(keys) is tuple:
+        for key in keys:
+            assert key in input_features.keys(), 'Make sure the key you are referring to is present in the features, ' \
+                                                 '{} was not found'.format(key)
+    else:
+        assert keys in input_features.keys(), 'Make sure the key you are referring to is present in the features, ' \
+                                              '{} was not found'.format(keys)
+
+
+class ImageProcessor(object):
+    def parse(self, *args, **kwargs):
+        return args, kwargs
 
 
 class MaskOneBasedOnOther(ImageProcessor):
