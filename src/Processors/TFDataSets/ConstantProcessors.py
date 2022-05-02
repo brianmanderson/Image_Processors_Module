@@ -109,7 +109,7 @@ class Decode_Images_Annotations(DecodeImagesAnnotations):
 
 
 class Random_Noise(ImageProcessor):
-    def __init__(self, max_noise=2.5, wanted_keys=['image']):
+    def __init__(self, max_noise=2.5, wanted_keys=('image',)):
         '''
         Return the image feature with an additive noise randomly weighted between [0.0, max_noise)
         :param max_noise: maximum magnitude of the noise in HU (apply before normalization)
