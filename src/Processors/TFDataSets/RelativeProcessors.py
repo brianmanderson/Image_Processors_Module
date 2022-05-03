@@ -85,7 +85,6 @@ class MaskOneBasedOnOther(ImageProcessor):
 class NormalizeBasedOnOther(ImageProcessor):
     def __init__(self, guiding_keys=('annotation',), changing_keys=('image',), reference_method=('reduce_max',),
                  changing_methods=('divide',)):
-        print("This does not seem to work, avoid using")
         self.guiding_keys, self.changing_keys = guiding_keys, changing_keys
         for method in reference_method:
             assert method in ('reduce_max', 'reduce_min'), 'Only provide a method of argmax, or argmin'
