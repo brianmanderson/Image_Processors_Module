@@ -82,5 +82,37 @@ class MaskOneBasedOnOther(ImageProcessor):
         return input_features
 
 
+class NormalizeBasedOnOther(ImageProcessor):
+    def __init__(self, guiding_keys=('annotation',), changing_keys=('image',), reference_method=('reduce_max',),
+                 changing_methods=('divide',)):
+        print("This does not seem to work, avoid using")
+        self.guiding_keys, self.changing_keys = guiding_keys, changing_keys
+        for method in reference_method:
+            assert method in ('reduce_max', 'reduce_min'), 'Only provide a method of argmax, or argmin'
+        for method in changing_methods:
+            assert method in ('divide', 'multiply'), 'Only provide a method of argmax, or argmin'
+        self.methods = reference_method
+        self.changing_methods = changing_methods
+
+    def parse(self, input_features, *args, **kwargs):
+        _check_keys_(input_features=input_features, keys=self.guiding_keys)
+        _check_keys_(input_features=input_features, keys=self.changing_keys)
+        for guiding_key, changing_key, ref_method, change_method in zip(self.guiding_keys, self.changing_keys,
+                                                                        self.methods, self.changing_methods):
+            if ref_method == 'reduce_max':
+                value = tf.reduce_max(input_features[guiding_key])
+                if change_method == 'divide':
+                    input_features[changing_key] = tf.divide(input_features[changing_key], value)
+                elif change_method == 'multiply':
+                    input_features[changing_key] = tf.multiply(input_features[changing_key], value)
+            elif ref_method == 'reduce_min':
+                value = tf.reduce_min(input_features[guiding_key])
+                if change_method == 'divide':
+                    input_features[changing_key] = tf.divide(input_features[changing_key], value)
+                elif change_method == 'multiply':
+                    input_features[changing_key] = tf.multiply(input_features[changing_key], value)
+        return input_features
+
+
 if __name__ == '__main__':
     pass
