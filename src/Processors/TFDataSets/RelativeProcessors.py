@@ -113,5 +113,17 @@ class NormalizeBasedOnOther(ImageProcessor):
         return input_features
 
 
+class DivideBasedOnOther(ImageProcessor):
+    def __init__(self, guiding_keys=('annotation',), changing_keys=('image',)):
+        self.guiding_keys, self.changing_keys = guiding_keys, changing_keys
+
+    def parse(self, input_features, *args, **kwargs):
+        _check_keys_(input_features=input_features, keys=self.guiding_keys)
+        _check_keys_(input_features=input_features, keys=self.changing_keys)
+        for guiding_key, changing_key in zip(self.guiding_keys, self.changing_keys):
+            input_features[changing_key] = input_features[changing_key] / input_features[guiding_key]
+        return input_features
+
+
 if __name__ == '__main__':
     pass
