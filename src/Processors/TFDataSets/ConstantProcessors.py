@@ -131,24 +131,23 @@ class Random_Noise(ImageProcessor):
         return image_features
 
 
-class ChangeMagnificiation(ImageProcessor):
-    def __init__(self, input_keys=('primary_image', 'secondary_image'), acquired_SSDs=(1540, 1540, 1540),
-                 simulated_SSDs=(950, 1000, 1050), output_keys=('primary_image_mag', 'secondary_image_mag')):
+class ResizeAndPad(ImageProcessor):
+    def __init__(self, input_keys=('primary_image', 'secondary_image'),
+                 output_keys=('primary_image_mag', 'secondary_image_mag'), resize_row_col=(133, 133),
+                 output_size=(256, 256)):
         self.input_keys = input_keys
         self.output_keys = output_keys
-        self.acquired_SSDs = acquired_SSDs
-        self.simulated_SSDs = simulated_SSDs
+        self.resize_row_col = resize_row_col
+        self.output_size = output_size
 
     def parse(self, image_features, *args, **kwargs):
         _check_keys_(input_features=image_features, keys=self.input_keys)
-        for image_key, acquired_SSD, simulated_SSD, output_key in zip(self.input_keys, self.acquired_SSDs,
-                                                                      self.simulated_SSDs, self.output_keys):
+        for image_key, resize_row_col, output_key, output_size in zip(self.input_keys, self.resize_row_col,
+                                                                      self.output_keys, self.output_size):
             x = image_features[image_key]
-            current_size = x.shape[1]
-            output_size = int(x.shape[1] // 2 * simulated_SSD / acquired_SSD * 2)
-            new_image = tf.image.resize(x, [output_size, output_size])
-            padded_image = tf.image.pad_to_bounding_box(new_image, (current_size - output_size) // 2,
-                                                        (current_size - output_size) // 2, current_size, current_size)
+            new_image = tf.image.resize(x, [resize_row_col, resize_row_col])
+            padded_image = tf.image.pad_to_bounding_box(new_image, (output_size - resize_row_col) // 2,
+                                                        (output_size - resize_row_col) // 2, output_size, output_size)
             image_features[output_key] = padded_image
         return image_features
 
