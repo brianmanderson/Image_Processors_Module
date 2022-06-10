@@ -629,6 +629,31 @@ class ResampleSITKHandlesToAnotherHandle(ImageProcessor):
         return input_features
 
 
+class SetSITKOrigin(ImageProcessor):
+    def __init__(self, keys=('image_handle', 'annotation_handle'),
+                 desired_output_origin=(None, None, None), verbose=True):
+        self.keys = keys
+        self.verbose = verbose
+        self.desired_output_origin = desired_output_origin
+
+    def pre_process(self, input_features):
+        _check_keys_(input_features=input_features, keys=self.keys)
+        for key in self.keys:
+            image_handle = input_features[key]
+            assert type(image_handle) is sitk.Image, 'Pass a SimpleITK Image'
+            input_origin = image_handle.GetOrigin()
+            output_origin = []
+            output_size = []
+            for index in range(3):
+                if self.desired_output_origin[index] is None:
+                    output_origin.append(input_origin[index])
+                else:
+                    output_origin.append(self.desired_output_origin[index])
+            image_handle.SetOrigin(output_origin)
+            input_features[key] = image_handle
+        return input_features
+
+
 class ResampleSITKHandles(ImageProcessor):
     def __init__(self, resample_keys=('image_handle', 'annotation_handle'),
                  resample_interpolators=('Linear', 'Nearest'), desired_output_size=None,
