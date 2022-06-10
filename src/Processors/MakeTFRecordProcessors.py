@@ -643,7 +643,6 @@ class SetSITKOrigin(ImageProcessor):
             assert type(image_handle) is sitk.Image, 'Pass a SimpleITK Image'
             input_origin = image_handle.GetOrigin()
             output_origin = []
-            output_size = []
             for index in range(3):
                 if self.desired_output_origin[index] is None:
                     output_origin.append(input_origin[index])
