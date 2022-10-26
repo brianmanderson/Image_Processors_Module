@@ -629,9 +629,33 @@ class ResampleSITKHandlesToAnotherHandle(ImageProcessor):
         return input_features
 
 
+class SetSITKOrigin(ImageProcessor):
+    def __init__(self, keys=('image_handle', 'annotation_handle'),
+                 desired_output_origin=(None, None, None), verbose=True):
+        self.keys = keys
+        self.verbose = verbose
+        self.desired_output_origin = desired_output_origin
+
+    def pre_process(self, input_features):
+        _check_keys_(input_features=input_features, keys=self.keys)
+        for key in self.keys:
+            image_handle = input_features[key]
+            assert type(image_handle) is sitk.Image, 'Pass a SimpleITK Image'
+            input_origin = image_handle.GetOrigin()
+            output_origin = []
+            for index in range(3):
+                if self.desired_output_origin[index] is None:
+                    output_origin.append(input_origin[index])
+                else:
+                    output_origin.append(self.desired_output_origin[index])
+            image_handle.SetOrigin(output_origin)
+            input_features[key] = image_handle
+        return input_features
+
+
 class ResampleSITKHandles(ImageProcessor):
     def __init__(self, resample_keys=('image_handle', 'annotation_handle'),
-                 resample_interpolators=('Linear', 'Nearest'),
+                 resample_interpolators=('Linear', 'Nearest'), desired_output_size=None,
                  desired_output_spacing=(None, None, None), verbose=True):
         """
         :param resample_keys: tuple of keys in input_features to resample
@@ -643,31 +667,37 @@ class ResampleSITKHandles(ImageProcessor):
         self.resample_keys = resample_keys
         self.resample_interpolators = resample_interpolators
         self.verbose = verbose
+        self.desired_output_size = desired_output_size
 
     def pre_process(self, input_features):
         resampler = ImageResampler()
         _check_keys_(input_features=input_features, keys=self.resample_keys)
         for key, interpolator in zip(self.resample_keys, self.resample_interpolators):
             image_handle = input_features[key]
+            input_size = image_handle.GetSize()
             assert type(image_handle) is sitk.Image, 'Pass a SimpleITK Image'
             input_spacing = image_handle.GetSpacing()
             output_spacing = []
+            output_size = []
             for index in range(3):
                 if self.desired_output_spacing[index] is None:
                     output_spacing.append(input_spacing[index])
                 else:
                     output_spacing.append(self.desired_output_spacing[index])
+                if self.desired_output_size is None:
+                    output_size.append(input_size[index])
             output_spacing = tuple(output_spacing)
             input_features['{}_original_spacing'.format(key)] = np.asarray(input_spacing, dtype='float32')
             input_features['{}_output_spacing'.format(key)] = np.asarray(output_spacing, dtype='float32')
-            input_features['{}_original_size'.format(key)] = np.asarray(image_handle.GetSize(), dtype='float32')
+            input_features['{}_original_size'.format(key)] = np.asarray(input_size, dtype='float32')
             input_features['output_spacing'] = np.asarray(output_spacing, dtype='float32')
-            if output_spacing != input_spacing:
+            if output_spacing != input_spacing or input_size != output_size:
                 if self.verbose:
                     print('Resampling {} to {}'.format(input_spacing, output_spacing))
                 image_handle = resampler.resample_image(input_image_handle=image_handle,
                                                         output_spacing=output_spacing,
-                                                        interpolator=interpolator)
+                                                        interpolator=interpolator,
+                                                        output_size=self.desired_output_size)
                 input_features[key] = image_handle
                 input_features['{}_spacing'.format(key)] = np.asarray(self.desired_output_spacing, dtype='float32')
         return input_features
