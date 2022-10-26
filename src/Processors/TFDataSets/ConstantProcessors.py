@@ -1,6 +1,6 @@
 __author__ = 'Brian M Anderson'
 # Created on 3/5/2021
-
+import copy
 import sys
 import os.path
 sys.path.append(
@@ -211,17 +211,17 @@ class Return_Outputs(ImageProcessor):
 
 
 class Resize_Images(ImageProcessor):
-    def __init__(self, image_rows=512, image_cols=512):
+    def __init__(self, image_rows=512, image_cols=512, image_keys=('image',)):
+        print("Does not work")
         self.image_rows = tf.constant(image_rows)
         self.image_cols = tf.constant(image_cols)
+        self.image_keys = image_keys
 
     def parse(self, image_features, *args, **kwargs):
-        assert len(image_features['image'].shape) > 2, 'You should do an expand_dimensions before this!'
-        image_features['image'] = tf.image.resize(image_features['image'], size=(self.image_rows, self.image_cols),
-                                                  method='bilinear', preserve_aspect_ratio=True)
-        image_features['annotation'] = tf.image.resize(image_features['annotation'],
-                                                       size=(self.image_rows, self.image_cols),
-                                                       method='nearest', preserve_aspect_ratio=True)
+        _check_keys_(image_features, self.image_keys)
+        for key in self.image_keys:
+            image_features[key] = tf.image.resize(image_features[key], size=(self.image_rows, self.image_cols),
+                                                  method='bilinear')
         return image_features
 
 
@@ -392,6 +392,57 @@ class MultiplyImagesByConstant(ImageProcessor):
         _check_keys_(input_features=image_features, keys=self.keys)
         for key, value in zip(self.keys, self.values):
             image_features[key] = tf.multiply(image_features[key], tf.cast(value, image_features[key].dtype))
+        return image_features
+
+
+class TakeExpOfKey(ImageProcessor):
+    def __init__(self, input_keys=('pdos_array',)):
+        self.input_keys = input_keys
+
+    def parse(self, image_features, *args, **kwargs):
+        _check_keys_(input_features=image_features, keys=self.input_keys)
+        for input_key in self.input_keys:
+            image_features[input_key] = tf.exp(image_features[input_key])
+        return image_features
+
+
+class CreateNewKey(ImageProcessor):
+    def __init__(self, input_keys=('pdos_array',), output_keys=('new_pdos_array',)):
+        self.input_keys = input_keys
+        self.output_keys = output_keys
+
+    def parse(self, image_features, *args, **kwargs):
+        _check_keys_(input_features=image_features, keys=self.input_keys)
+        for input_key, output_key in zip(self.input_keys, self.output_keys):
+            image_features[output_key] = tf.add(image_features[input_key], tf.cast(0, image_features[input_key].dtype))
+        return image_features
+
+
+class AddImagesTogether(ImageProcessor):
+    def __init__(self, keys=('pdos_array', 'drr_array'), out_key='pdos_drr_combined'):
+        """
+        :param keys:
+        """
+        self.keys = keys
+        self.out_key = out_key
+
+    def parse(self, image_features, *args, **kwargs):
+        _check_keys_(input_features=image_features, keys=self.keys)
+        image_features[self.out_key] = tf.add(image_features[self.keys[0]], image_features[self.keys[1]])
+        return image_features
+
+
+class MultiplyImagesTogether(ImageProcessor):
+    def __init__(self, keys=('pdos_array', 'drr_array'), out_key='pdos_drr_combined'):
+        """
+        :param keys:
+        """
+        self.keys = keys
+        self.out_key = out_key
+
+    def parse(self, image_features, *args, **kwargs):
+        _check_keys_(input_features=image_features, keys=self.keys)
+        image_features[self.out_key] = tf.multiply(image_features[self.keys[0]], image_features[self.keys[1]])
         return image_features
 
 
@@ -718,9 +769,25 @@ class Threshold_Images(ImageProcessor):
         return image_features
 
 
+class PadImages(ImageProcessor):
+    def __init__(self, keys=('image', 'annotation'), pad_left=(100, 100), pad_top=(100, 100), out_size=(256, 256)):
+        self.keys = keys
+        self.pad_left = pad_left
+        self.pad_top = pad_top
+        self.out_size = out_size
+
+    def parse(self, image_features, *args, **kwargs):
+        _check_keys_(image_features, self.keys)
+        for key, pad_left, pad_top, out_size in zip(self.keys, self.pad_left, self.pad_top, self.out_size):
+            image = image_features[key]
+            new_image = tf.image.pad_to_bounding_box(image, pad_left, pad_top, out_size, out_size)
+            image_features[key] = new_image
+        return image_features
+
+
 class Resize_with_crop_pad(ImageProcessor):
     def __init__(self, keys=('image', 'annotation'), image_rows=(512, 512), image_cols=(512, 512),
-                 is_mask=(False, True)):
+                 is_mask=(False, True), out_keys=('image', 'annotation')):
         """
         :param keys: tuple of keys
         :param image_rows: tuple of image rows
@@ -732,10 +799,12 @@ class Resize_with_crop_pad(ImageProcessor):
         self.is_mask = is_mask
         self.image_rows = image_rows
         self.image_cols = image_cols
+        self.out_keys = out_keys
 
     def parse(self, image_features, *args, **kwargs):
         _check_keys_(input_features=image_features, keys=self.keys)
-        for key, image_rows, image_cols, is_mask in zip(self.keys, self.image_rows, self.image_cols, self.is_mask):
+        for key, image_rows, image_cols, is_mask, out_key in zip(self.keys, self.image_rows, self.image_cols,
+                                                                 self.is_mask, self.out_keys):
             image_rows = tf.constant(image_rows)
             image_cols = tf.constant(image_cols)
             image_features[key] = tf.image.resize_with_crop_or_pad(image_features[key],
@@ -746,7 +815,7 @@ class Resize_with_crop_pad(ImageProcessor):
                 array = array[..., 1:]  # remove background
                 background = tf.expand_dims(1 - tf.reduce_sum(array, axis=-1), axis=-1)
                 array = tf.concat([background, array], axis=-1)
-                image_features[key] = array
+                image_features[out_key] = array
         return image_features
 
 
