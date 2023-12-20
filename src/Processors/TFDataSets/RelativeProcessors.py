@@ -82,6 +82,24 @@ class MaskOneBasedOnOther(ImageProcessor):
         return input_features
 
 
+class AddMetricBasedOnImage(ImageProcessor):
+    def __init__(self, image_keys=('annotation',), methods=('reduce_max',), out_key_names=('annotation_max',)):
+        self.image_keys = image_keys
+        self.methods = methods
+        self.out_key_names = out_key_names
+
+    def parse(self, input_features, *args, **kwargs):
+        _check_keys_(input_features=input_features, keys=self.image_keys)
+        for image_key, ref_method, out_key in zip(self.image_keys, self.methods, self.out_key_names):
+            if ref_method == 'reduce_max':
+                value = tf.reduce_max(input_features[image_key])
+                input_features[out_key] = value
+            elif ref_method == 'reduce_min':
+                value = tf.reduce_min(input_features[image_key])
+                input_features[out_key] = value
+        return input_features
+
+
 class NormalizeBasedOnOther(ImageProcessor):
     def __init__(self, guiding_keys=('annotation',), changing_keys=('image',), reference_method=('reduce_max',),
                  changing_methods=('divide',)):
