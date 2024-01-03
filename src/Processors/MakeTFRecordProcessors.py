@@ -2517,7 +2517,7 @@ class Box_Images(ImageProcessor):
         return input_features
 
 
-class CropAboutValues(ImageProcessor):
+class CropHandlesAboutValues(ImageProcessor):
     def __init__(self, input_keys=("image_handle", "dose_handle"), guiding_keys=("dose_handle", "dose_handle"), min_values=(200, 200)):
         self.input_keys = input_keys
         self.guiding_keys = guiding_keys
