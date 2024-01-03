@@ -11,7 +11,7 @@ from tensorflow.python.keras.utils.np_utils import to_categorical
 import cv2, math, copy, os, sys
 from skimage.measure import block_reduce
 from Fill_In_Segments_sitk import Fill_Missing_Segments
-from Resample_Class.src.NiftiResampler.ResampleTools import Resample_Class_Object, sitk
+from NiftiResampler.ResampleTools import Resample_Class_Object, sitk
 from PlotScrollNumpyArrays.Plot_Scroll_Images import plot_scroll_Image, plt
 '''
 Description of code

@@ -7,7 +7,7 @@ sys.path.append(
     os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
 import SimpleITK as sitk
 import numpy as np
-from _collections import OrderedDict
+from collections import OrderedDict
 from NiftiResampler.ResampleTools import ImageResampler
 from scipy.ndimage.filters import gaussian_filter
 import copy
