@@ -7,7 +7,7 @@ from PlotScrollNumpyArrays.Plot_Scroll_Images import plot_scroll_Image, plt
 import tensorflow as tf
 import pickle
 import os
-from _collections import OrderedDict
+from collections import OrderedDict
 import numpy as np
 from threading import Thread
 import copy
