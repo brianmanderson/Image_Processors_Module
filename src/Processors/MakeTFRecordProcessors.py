@@ -60,12 +60,15 @@ def get_start_stop(annotation, extension=np.inf, desired_val=1):
     return start, stop
 
 
-def get_bounding_boxes(annotation_handle, value):
+def get_bounding_boxes(annotation_handle, lower_threshold, upper_threshold=None):
+    if upper_threshold is None:
+        upper_threshold = lower_threshold + 1
+    annotation_handle: sitk.Image
     Connected_Component_Filter = sitk.ConnectedComponentImageFilter()
     RelabelComponent = sitk.RelabelComponentImageFilter()
     RelabelComponent.SortByObjectSizeOn()
     stats = sitk.LabelShapeStatisticsImageFilter()
-    thresholded_image = sitk.BinaryThreshold(annotation_handle, lowerThreshold=value, upperThreshold=value + 1)
+    thresholded_image = sitk.BinaryThreshold(annotation_handle, lowerThreshold=lower_threshold, upperThreshold=upper_threshold)
     connected_image = Connected_Component_Filter.Execute(thresholded_image)
     connected_image = RelabelComponent.Execute(connected_image)
     stats.Execute(connected_image)
@@ -2512,6 +2515,23 @@ class Box_Images(ImageProcessor):
             image = np.pad(image, pads, constant_values=np.min(image))
             input_features[key] = image
         return input_features
+
+
+class CropAboutValues(ImageProcessor):
+    def __init__(self, input_keys=("image_handle", "dose_handle"), guiding_keys=("dose_handle", "dose_handle"), min_values=(200, 200)):
+        self.input_keys = input_keys
+        self.guiding_keys = guiding_keys
+        self.min_values = min_values
+    
+    def pre_process(self, input_features):
+        _check_keys_(input_features=input_features, keys=self.input_keys + self.guiding_keys)
+        image_handle: sitk.Image
+        guide_handle: sitk.Image
+        for image_key, guiding_key, min_value in zip(self.input_keys, self.guiding_keys, self.min_values):
+            image_handle = input_features[image_key]
+            guide_handle = input_features[guiding_key]
+            
+        return super().pre_process(input_features)
 
 
 class PadImages(ImageProcessor):
