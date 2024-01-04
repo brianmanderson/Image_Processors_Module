@@ -2518,21 +2518,22 @@ class CropHandlesAboutValues(ImageProcessor):
         self.upper_value = upper_value
     
     def pre_process(self, input_features):
-        _check_keys_(input_features=input_features, keys=self.input_keys + self.guiding_keys)
+        _check_keys_(input_features=input_features, keys=self.input_keys + (self.guiding_key,))
         image_handle: sitk.Image
         guide_handle: sitk.Image
         guide_handle = input_features[self.guiding_key]
         bounding_boxes, num_voxels = get_bounding_boxes(guide_handle, lower_threshold=self.min_value, upper_threshold=self.upper_value)
-        bounding_box = return_largest_bounding_box(bounding_boxes, num_voxels)  # Bounding box is row, col, z, rows, cols, zs
-        row_start, col_start, z_start = bounding_box[0], bounding_box[1], bounding_box[2]
-        row_stop = row_start + bounding_box[3]
-        col_stop = col_start + bounding_box[4]
-        z_stop = z_start + bounding_box[5]
-        for image_key in self.input_keys:
-            image_handle = input_features[image_key]
-            image_handle = image_handle[row_start:row_stop, col_start:col_stop, z_start:z_stop]
-            input_features[image_key] = image_handle
-            x = 1
+        if len(bounding_boxes) > 0:
+            bounding_box = return_largest_bounding_box(bounding_boxes, num_voxels)  # Bounding box is row, col, z, rows, cols, zs
+            row_start, col_start, z_start = bounding_box[0], bounding_box[1], bounding_box[2]
+            row_stop = row_start + bounding_box[3]
+            col_stop = col_start + bounding_box[4]
+            z_stop = z_start + bounding_box[5]
+            for image_key in self.input_keys:
+                image_handle = input_features[image_key]
+                image_handle = image_handle[row_start:row_stop, col_start:col_stop, z_start:z_stop]
+                input_features[image_key] = image_handle
+        return input_features
 
 
 class PadImages(ImageProcessor):
