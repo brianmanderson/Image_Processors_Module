@@ -85,8 +85,8 @@ def return_example_proto(base_dictionary, image_dictionary_for_pickle=None, data
             feature[key] = _int64_feature(tf.constant(data, dtype='int64'))
             if key not in image_dictionary_for_pickle:
                 image_dictionary_for_pickle[key] = tf.io.FixedLenFeature([], tf.int64)
-        elif type(data) is float:
-            feature[key] = _float_feature(tf.constant(data, dtype='float32'))
+        elif type(data) in [float, np.float32, np.float64]:
+            feature[key] = _float_feature(tf.constant(float(data), dtype='float32'))
             if key not in image_dictionary_for_pickle:
                 image_dictionary_for_pickle[key] = tf.io.FixedLenFeature([], tf.float32)
         elif type(data) is np.ndarray:
@@ -102,10 +102,6 @@ def return_example_proto(base_dictionary, image_dictionary_for_pickle=None, data
             feature[key] = _bytes_feature(tf.constant(data))
             if key not in image_dictionary_for_pickle:
                 image_dictionary_for_pickle[key] = tf.io.FixedLenFeature([], tf.string)
-        elif type(data) is np.float32:
-            feature[key] = _float_feature(tf.constant(data, dtype='float32'))
-            if key not in image_dictionary_for_pickle:
-                image_dictionary_for_pickle[key] = tf.io.FixedLenFeature([], tf.float32)
     example_proto = tf.train.Example(features=tf.train.Features(feature=feature))
     return example_proto
 
