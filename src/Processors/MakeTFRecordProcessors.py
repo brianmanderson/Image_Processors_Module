@@ -1272,23 +1272,6 @@ class SplitArray(ImageProcessor):
         return input_features
 
 
-class Add_Dose(ImageProcessor):
-    def pre_process(self, input_features):
-        image_path = input_features['image_path']
-        dose_path = image_path.replace('Data', 'Dose')
-        dose_handle = sitk.ReadImage(dose_path)
-        dose = sitk.GetArrayFromImage(dose_handle).astype('float32')
-        spacing = dose_handle.GetSpacing()
-        input_features['dose'] = dose
-        input_features['dose_images'] = dose.shape[0]
-        input_features['dose_rows'] = dose.shape[1]
-        input_features['dose_cols'] = dose.shape[2]
-        input_features['dose_spacing_images'] = spacing[0]
-        input_features['dose_spacing_rows'] = spacing[1]
-        input_features['dose_spacing_cols'] = spacing[2]
-        return input_features
-
-
 class Clip_Images_By_Extension(ImageProcessor):
     def __init__(self, extension=np.inf):
         self.extension = extension
@@ -2517,21 +2500,39 @@ class Box_Images(ImageProcessor):
         return input_features
 
 
+def return_largest_bounding_box(bounding_boxes, number_of_voxels):
+    num_voxel = 0
+    out_box = bounding_boxes[0]
+    for bbox, voxel_num in zip(bounding_boxes, number_of_voxels):
+        if voxel_num > num_voxel:
+            out_box = bbox
+            num_voxel = voxel_num
+    return out_box
+
+
 class CropHandlesAboutValues(ImageProcessor):
-    def __init__(self, input_keys=("image_handle", "dose_handle"), guiding_keys=("dose_handle", "dose_handle"), min_values=(200, 200)):
+    def __init__(self, input_keys=("image_handle", "dose_handle"), guiding_key="dose_handle", min_value=0.5, upper_value=None):
         self.input_keys = input_keys
-        self.guiding_keys = guiding_keys
-        self.min_values = min_values
+        self.guiding_key = guiding_key
+        self.min_value = min_value
+        self.upper_value = upper_value
     
     def pre_process(self, input_features):
         _check_keys_(input_features=input_features, keys=self.input_keys + self.guiding_keys)
         image_handle: sitk.Image
         guide_handle: sitk.Image
-        for image_key, guiding_key, min_value in zip(self.input_keys, self.guiding_keys, self.min_values):
+        guide_handle = input_features[self.guiding_key]
+        bounding_boxes, num_voxels = get_bounding_boxes(guide_handle, lower_threshold=self.min_value, upper_threshold=self.upper_value)
+        bounding_box = return_largest_bounding_box(bounding_boxes, num_voxels)  # Bounding box is row, col, z, rows, cols, zs
+        row_start, col_start, z_start = bounding_box[0], bounding_box[1], bounding_box[2]
+        row_stop = row_start + bounding_box[3]
+        col_stop = col_start + bounding_box[4]
+        z_stop = z_start + bounding_box[5]
+        for image_key in self.input_keys:
             image_handle = input_features[image_key]
-            guide_handle = input_features[guiding_key]
-            
-        return super().pre_process(input_features)
+            image_handle = image_handle[row_start:row_stop, col_start:col_stop, z_start:z_stop]
+            input_features[image_key] = image_handle
+            x = 1
 
 
 class PadImages(ImageProcessor):
