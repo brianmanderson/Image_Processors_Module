@@ -2511,11 +2511,18 @@ def return_largest_bounding_box(bounding_boxes, number_of_voxels):
 
 
 class CropHandlesAboutValues(ImageProcessor):
-    def __init__(self, input_keys=("image_handle", "dose_handle"), guiding_key="dose_handle", min_value=0.5, upper_value=None):
+    def __init__(self, input_keys=("image_handle", "dose_handle"), guiding_key="dose_handle", min_value=0.5,
+                 upper_value=None, power_val_z=1, power_val_x=1, power_val_y=1):
+        """
+        We have power vals here for a reason. If we are cropping about a dose distribution and the 'cube' that comes
+        out is 55x110x110, but we need our final 'cube' to be 64x128x128, why not bump it out a little?
+        By default you will get the minimal cube, but the power_val can 'pad' with the natural image
+        """
         self.input_keys = input_keys
         self.guiding_key = guiding_key
         self.min_value = min_value
         self.upper_value = upper_value
+        self.power_val_z, self.power_val_x, self.power_val_y = power_val_z, power_val_x, power_val_y
     
     def pre_process(self, input_features):
         _check_keys_(input_features=input_features, keys=self.input_keys + (self.guiding_key,))
@@ -2525,10 +2532,21 @@ class CropHandlesAboutValues(ImageProcessor):
         bounding_boxes, num_voxels = get_bounding_boxes(guide_handle, lower_threshold=self.min_value, upper_threshold=self.upper_value)
         if len(bounding_boxes) > 0:
             bounding_box = return_largest_bounding_box(bounding_boxes, num_voxels)  # Bounding box is row, col, z, rows, cols, zs
+            row_size, col_size, z_size = guide_handle.GetSize()
             row_start, col_start, z_start = bounding_box[0], bounding_box[1], bounding_box[2]
             row_stop = row_start + bounding_box[3]
             col_stop = col_start + bounding_box[4]
             z_stop = z_start + bounding_box[5]
+            r_total, c_total, z_total = bounding_box[3], bounding_box[4], bounding_box[5]
+            remainder_z, remainder_r, remainder_c = (self.power_val_z - z_total % self.power_val_z if z_total % self.power_val_z != 0 else 0,
+                                                     self.power_val_x - r_total % self.power_val_x if r_total % self.power_val_x != 0 else 0,
+                                                     self.power_val_y - c_total % self.power_val_y if c_total % self.power_val_y != 0 else 0)
+            row_start = max([0, row_start - remainder_r//2])
+            col_start = max([0, col_start - remainder_c//2])
+            z_start = max([0, z_start - remainder_z//2])
+            row_stop = min([row_size, row_stop + remainder_r//2])
+            col_stop = min([col_size, col_stop + remainder_c // 2])
+            z_stop = min([z_size, z_stop + remainder_z // 2])
             for image_key in self.input_keys:
                 image_handle = input_features[image_key]
                 image_handle = image_handle[row_start:row_stop, col_start:col_stop, z_start:z_stop]
