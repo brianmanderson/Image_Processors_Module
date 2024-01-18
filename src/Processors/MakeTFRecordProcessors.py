@@ -16,6 +16,7 @@ import typing
 import cv2
 from skimage import morphology
 from PlotScrollNumpyArrays.Plot_Scroll_Images import plot_scroll_Image, plt
+from typing import List, Dict
 
 
 def _check_keys_(input_features, keys):
@@ -265,6 +266,29 @@ class Remove_Lowest_Probabilty_Structure(object):
                 out_mask = mask
         image_slice[out_mask == 0] = 0
         return image_slice
+
+
+class BinValuesConvertClass(object):
+    def __init__(self, initial_min, initial_max, output_value) -> None:
+        self.initial_min = initial_min
+        self.initial_max = initial_max
+        self.output_value = output_value
+
+
+class Bin_Values(ImageProcessor):
+    def __init__(self, change_keys, output_keys, bin_values: List[BinValuesConvertClass]):
+        self.change_keys = change_keys
+        self.output_keys = output_keys
+        self.bin_values = bin_values
+
+    def pre_process(self, input_features):
+        _check_keys_(input_features=input_features, keys=self.change_keys)
+        for input_key, output_key in zip(self.change_keys, self.output_keys):
+            value_to_change = input_features[input_key]
+            for bin_class in self.bin_values:
+                if value_to_change >= bin_class.initial_min and value_to_change <= bin_class.initial_max:
+                    input_features[output_key] = bin_class.output_value
+        return input_features
 
 
 class Gaussian_Uncertainty(ImageProcessor):
