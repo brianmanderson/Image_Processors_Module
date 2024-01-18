@@ -304,6 +304,7 @@ class ToCategorical(ImageProcessor):
         _check_keys_(input_features=input_features, keys=self.annotation_keys)
         for key, num_classes in zip(self.annotation_keys, self.number_of_classes):
             y = input_features[key]
+            y = tf.squeeze(y)
             input_features[key] = tf.cast(tf.one_hot(tf.cast(y, tf.int32), num_classes), dtype=y.dtype)
         return input_features
 
