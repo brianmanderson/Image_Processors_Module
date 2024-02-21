@@ -745,7 +745,7 @@ class Flip_Images(ImageProcessor):
 
 
 class Change_Data_Type(ImageProcessor):
-    def __init__(self, keys=tuple(str), new_dtypes=tuple(tf.dtype)):
+    def __init__(self, keys=('image_array',), new_dtypes=(tf.float32,)):
         """
         :param keys: tuple of image keys
         :param lower_bounds: tuple of bounds
@@ -758,7 +758,7 @@ class Change_Data_Type(ImageProcessor):
     def parse(self, image_features, *args, **kwargs):
         _check_keys_(image_features, self.image_keys)
         for image_key, new_dtype in zip(self.image_keys, self.new_dtypes):
-            image_features[key] = tf.cast(image_features[key], dtype=new_dtype)
+            image_features[image_key] = tf.cast(image_features[image_key], dtype=new_dtype)
         return image_features
 
 
