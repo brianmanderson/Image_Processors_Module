@@ -744,6 +744,24 @@ class Flip_Images(ImageProcessor):
         return image_features
 
 
+class Change_Data_Type(ImageProcessor):
+    def __init__(self, keys=tuple(str), new_dtypes=tuple(tf.dtype)):
+        """
+        :param keys: tuple of image keys
+        :param lower_bounds: tuple of bounds
+        :param upper_bounds: tuple of bounds
+        :param divides: boolean if you want to divide
+        """
+        self.image_keys = keys
+        self.new_dtypes = new_dtypes
+
+    def parse(self, image_features, *args, **kwargs):
+        _check_keys_(image_features, self.image_keys)
+        for image_key, new_dtype in zip(self.image_keys, self.new_dtypes):
+            image_features[key] = tf.cast(image_features[key], dtype=new_dtype)
+        return image_features
+
+
 class Threshold_Images(ImageProcessor):
     def __init__(self, keys=('image',), lower_bounds=(-np.inf,), upper_bounds=(np.inf,), divides=(True,)):
         """
