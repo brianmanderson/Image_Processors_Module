@@ -2575,6 +2575,9 @@ class CropHandlesAboutValues(ImageProcessor):
                 image_handle = input_features[image_key]
                 image_handle = image_handle[row_start:row_stop, col_start:col_stop, z_start:z_stop]
                 input_features[image_key] = image_handle
+                input_features['crop_row_start'] = row_start
+                input_features['crop_col_start'] = row_start
+                input_features['crop_z_start'] = row_start
         return input_features
 
 
