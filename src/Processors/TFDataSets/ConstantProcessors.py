@@ -349,24 +349,21 @@ class Expand_Dimensions(ImageProcessor):
         return image_features
 
 
-class Repeat_Channel(ImageProcessor):
-    def __init__(self, axis=-1, repeats=3, on_images=True, on_annotations=False):
-        '''
+class RepeatChannel(ImageProcessor):
+    def __init__(self, axis=-1, repeats=3, input_keys=('image',)):
+        """
         :param axis: axis to expand
         :param repeats: number of repeats
-        :param on_images: expand the axis on the images
-        :param on_annotations: expand the axis on the annotations
-        '''
+        :param input_keys: tuple of the keys that you want to change
+        """
         self.axis = axis
         self.repeats = repeats
-        self.on_images = on_images
-        self.on_annotations = on_annotations
+        self.input_keys = input_keys
 
     def parse(self, image_features, *args, **kwargs):
-        if self.on_images:
-            image_features['image'] = tf.repeat(image_features['image'], axis=self.axis, repeats=self.repeats)
-        if self.on_annotations:
-            image_features['annotation'] = tf.repeat(image_features['annotation'], axis=self.axis, repeats=self.repeats)
+        _check_keys_(input_features=image_features, keys=self.input_keys)
+        for key in self.input_keys:
+            image_features[key] = tf.repeat(image_features[key], axis=self.axis, repeats=self.repeats)
         return image_features
 
 
