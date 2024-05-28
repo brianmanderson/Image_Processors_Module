@@ -720,6 +720,7 @@ class ResampleSITKHandles(ImageProcessor):
             input_features['{}_output_spacing'.format(key)] = np.asarray(output_spacing, dtype='float32')
             input_features['{}_original_size'.format(key)] = np.asarray(input_size, dtype='float32')
             input_features['output_spacing'] = np.asarray(output_spacing, dtype='float32')
+            input_features['{}_spacing'.format(key)] = np.asarray(self.desired_output_spacing, dtype='float32')
             if output_spacing != input_spacing or input_size != tuple(output_size):
                 if self.verbose:
                     print('Resampling {} to {}'.format(input_spacing, output_spacing))
@@ -728,7 +729,6 @@ class ResampleSITKHandles(ImageProcessor):
                                                         interpolator=interpolator,
                                                         output_size=self.desired_output_size)
                 input_features[key] = image_handle
-                input_features['{}_spacing'.format(key)] = np.asarray(self.desired_output_spacing, dtype='float32')
         return input_features
 
 
