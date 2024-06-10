@@ -169,9 +169,10 @@ class ReturnOutputs(ImageProcessor):
     """
     This should be your final image processor, this will turn your dictionary into a set of tensors
     """
-    def __init__(self, input_keys=('image',), output_keys=('annotation',)):
+    def __init__(self, input_keys=('image',), output_keys=('annotation',), as_tuple=True):
         self.input_keys = input_keys
         self.output_keys = output_keys
+        self.as_tuple = as_tuple
 
     def parse(self, image_features, *args, **kwargs):
         inputs = []
@@ -182,7 +183,9 @@ class ReturnOutputs(ImageProcessor):
         for key in self.output_keys:
             outputs.append(image_features[key])
         del image_features
-        return tuple(inputs), tuple(outputs)
+        if self.as_tuple:
+            return tuple(inputs), tuple(outputs)
+        return inputs[0], outputs[0]
 
 
 class Return_Outputs(ImageProcessor):
