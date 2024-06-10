@@ -708,7 +708,12 @@ class ResampleSITKHandles(ImageProcessor):
             output_size = []
             for index in range(3):
                 if self.desired_output_spacing[index] is None:
-                    output_spacing.append(input_spacing[index])
+                    if (self.desired_output_size[index] is None or
+                            self.desired_output_size[index] == input_size[index]):
+                        output_spacing.append(input_spacing[index])
+                    else:
+                        new_space = input_size[index]*input_spacing[index] / output_size[index]
+                        output_spacing.append(new_space)
                 else:
                     output_spacing.append(self.desired_output_spacing[index])
                 if self.desired_output_size is None or self.desired_output_size[index] is None:
@@ -727,7 +732,7 @@ class ResampleSITKHandles(ImageProcessor):
                 image_handle = resampler.resample_image(input_image_handle=image_handle,
                                                         output_spacing=output_spacing,
                                                         interpolator=interpolator,
-                                                        output_size=self.desired_output_size)
+                                                        output_size=output_size)
                 input_features[key] = image_handle
         return input_features
 
