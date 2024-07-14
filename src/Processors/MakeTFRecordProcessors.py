@@ -1312,12 +1312,12 @@ class Clip_Images_By_Extension(ImageProcessor):
 
     def pre_process(self, input_features):
         _check_keys_(input_features=input_features, keys=self.clipping_keys + self.guiding_keys)
-        for guiding_key, clipping_key in zip([self.guiding_keys, self.clipping_keys]):
+        for guiding_key, clipping_key in zip(self.guiding_keys, self.clipping_keys):
             image = input_features[clipping_key]
             annotation = input_features[guiding_key]
             start, stop = get_start_stop(annotation, self.extension)
             if start != -1 and stop != -1:
-                image, annotation = image[start:stop, ...], annotation[start:stop, ...]
+                image = image[start:stop, ...]
             input_features[clipping_key] = image
         return input_features
 
@@ -1949,6 +1949,21 @@ class Threshold_and_Expand_New(ImageProcessor):
             spacing=input_features[self.dicom_handle_key].GetSpacing(),
             max_iteration=10, reduce2D=False)
         input_features[self.prediction_key] = out_prediction
+        return input_features
+
+
+class ThresholdToMask(ImageProcessor):
+    def __init__(self, mask_keys=('annotation',), lower_bounds=(255/2,)):
+        self.mask_keys = mask_keys
+        self.lower_bounds = lower_bounds
+
+    def pre_process(self, input_features):
+        _check_keys_(input_features, self.mask_keys)
+        for mask_key, lower_threshold in zip(self.mask_keys, self.lower_bounds):
+            mask_array = input_features[mask_key]
+            mask_array[mask_array < lower_threshold] = 0
+            mask_array[mask_array > 0] = 1
+            input_features[mask_key] = mask_array
         return input_features
 
 
