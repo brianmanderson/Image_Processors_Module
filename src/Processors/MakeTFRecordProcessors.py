@@ -1304,17 +1304,21 @@ class SplitArray(ImageProcessor):
 
 
 class Clip_Images_By_Extension(ImageProcessor):
-    def __init__(self, extension=np.inf):
+    def __init__(self, extension=np.inf, clipping_keys=('image_array', 'mask_array'),
+                 guiding_keys=('mask_array', 'image_array')):
         self.extension = extension
+        self.clipping_keys = clipping_keys
+        self.guiding_keys = guiding_keys
 
     def pre_process(self, input_features):
-        image = input_features['image']
-        annotation = input_features['annotation']
-        start, stop = get_start_stop(annotation, self.extension)
-        if start != -1 and stop != -1:
-            image, annotation = image[start:stop, ...], annotation[start:stop, ...]
-        input_features['image'] = image
-        input_features['annotation'] = annotation.astype('int8')
+        _check_keys_(input_features=input_features, keys=self.clipping_keys + self.guiding_keys)
+        for guiding_key, clipping_key in zip([self.guiding_keys, self.clipping_keys]):
+            image = input_features[clipping_key]
+            annotation = input_features[guiding_key]
+            start, stop = get_start_stop(annotation, self.extension)
+            if start != -1 and stop != -1:
+                image, annotation = image[start:stop, ...], annotation[start:stop, ...]
+            input_features[clipping_key] = image
         return input_features
 
 
