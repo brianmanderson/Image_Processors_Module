@@ -165,6 +165,36 @@ class CombineKeys(ImageProcessor):
         return image_features
 
 
+class FixOutputShapes(ImageProcessor):
+    def __init__(self, keys=('ct_array', 'mask_array'),
+                 image_shapes=([1, None, None, None, 1], [1, None, None, None, 2])):
+        self.keys = keys
+        self.image_shapes = image_shapes
+
+    def parse(self, image_features, *args, **kwargs):
+        _check_keys_(input_features=image_features, keys=self.keys)
+        for key, shape in zip(self.keys, self.image_shapes):
+            image_features[key] = image_features[key].set_shape(shape)
+        return image_features
+
+
+class FixOutputShapesPostOutput(ImageProcessor):
+    def __init__(self, image_shapes=([1, None, None, None, 1], [1, None, None, None, 2]),
+                 as_tuple=True):
+        self.image_shapes = image_shapes
+        self.as_tuple = as_tuple
+
+    def parse(self, images, labels, *args, **kwargs):
+        if self.as_tuple:
+            images[0].set_shape(self.image_shapes[0])
+            labels[0].set_shape(self.image_shapes[1])
+            return tuple(images), tuple(labels)
+        else:
+            images.set_shape(self.image_shapes[0])
+            labels.set_shape(self.image_shapes[1])
+            return images, labels
+
+
 class ReturnOutputs(ImageProcessor):
     """
     This should be your final image processor, this will turn your dictionary into a set of tensors
