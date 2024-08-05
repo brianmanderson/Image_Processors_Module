@@ -1458,8 +1458,8 @@ class Split_Disease_Into_Cubes(ImageProcessor):
         return input_features
 
 
-class Distribute_into_3D(ImageProcessor):
-    def __init__(self, min_z=0, max_z=np.inf, max_rows=np.inf, max_cols=np.inf, mirror_small_bits=True,
+class Distribute_into_3DOld(ImageProcessor):
+    def __init__(self, image_keys=('image_key', 'mask_key'), min_z=0, max_z=np.inf, max_rows=np.inf, max_cols=np.inf, mirror_small_bits=True,
                  chop_ends=False, desired_val=1):
         self.max_z = max_z
         self.min_z = min_z
@@ -1467,6 +1467,7 @@ class Distribute_into_3D(ImageProcessor):
         self.mirror_small_bits = mirror_small_bits
         self.chop_ends = chop_ends
         self.desired_val = desired_val
+        self.image_keys = image_keys
 
     def pre_process(self, input_features):
         out_features = OrderedDict()
@@ -1513,6 +1514,25 @@ class Distribute_into_3D(ImageProcessor):
             out_features['Image_{}'.format(index)] = image_features
         input_features = out_features
         return input_features
+
+
+class Distribute_into_3D(ImageProcessor):
+    def __init__(self, image_keys=('image_key', 'mask_key')):
+        self.image_keys = image_keys
+
+    def pre_process(self, input_features):
+        _check_keys_(input_features=input_features, keys=self.image_keys)
+        out_features = OrderedDict()
+        image_features = OrderedDict()
+        for key in self.image_keys:
+            image = input_features[key]
+            image_features[key] = image
+        out_features[0] = image_features
+        for index in out_features:
+            for key in input_features:
+                if key not in out_features[index]:
+                    out_features[index][key] = input_features[key]
+        return out_features
 
 
 class Distribute_into_2D(ImageProcessor):
