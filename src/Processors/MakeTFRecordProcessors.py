@@ -2627,6 +2627,65 @@ class CropHandlesAboutValues(ImageProcessor):
         return input_features
 
 
+def largest_component_2D_slice(binary_image):
+    # Get the size of the 3D image
+    size = binary_image.GetSize()
+    label_shape_filter = sitk.LabelShapeStatisticsImageFilter()
+    # Initialize an empty list to store the processed slices
+    processed_slices = []
+
+    # Iterate over each 2D slice along the z-axis
+    for z in range(size[2]):
+        # Extract the 2D slice
+        slice_2D = binary_image[:, :, z]
+
+        # Label connected components in the 2D slice
+        label_image = sitk.ConnectedComponent(slice_2D)
+
+        # Analyze the connected components
+        label_shape_filter.Execute(label_image)
+
+        # Find the label of the largest component
+        largest_label = max(label_shape_filter.GetLabels(), key=lambda label: label_shape_filter.GetPhysicalSize(label))
+
+        # Create a binary mask of the largest component
+        largest_component = sitk.BinaryThreshold(label_image, lowerThreshold=largest_label,
+                                                 upperThreshold=largest_label, insideValue=1, outsideValue=0)
+
+        # Convert the largest component back to numpy array and add to the list
+        processed_slices.append(sitk.GetArrayFromImage(largest_component))
+
+    # Stack the 2D slices back into a 3D numpy array
+    processed_3D_array = np.stack(processed_slices, axis=0)
+
+    # Convert the numpy array back to a SimpleITK image
+    processed_3D_image = sitk.GetImageFromArray(processed_3D_array)
+    processed_3D_image.CopyInformation(binary_image)  # Keep original spatial information
+    return processed_3D_image
+
+
+class IdentifyBodyContour(ImageProcessor):
+    """
+    Code for converting a SITK image of a patient into a binary SITK image, only taking the largest
+    2D components
+    """
+    def __init__(self, image_key='image_handle', lower_threshold=-50, upper_threshold=1000,
+                 out_label='body_handle'):
+        self.image_key = image_key
+        self.lower_threshold = lower_threshold
+        self.upper_threshold = upper_threshold
+        self.out_label = out_label
+
+    def pre_process(self, input_features):
+        _check_keys_(input_features, (self.image_key,))
+        image_handle = input_features[self.image_key]
+        binary_image = sitk.BinaryThreshold(image_handle, lowerThreshold=self.lower_threshold,
+                                            upperThreshold=self.upper_threshold, insideValue=1, outsideValue=0)
+        # Step 1: Find largest connected component on a 2D slice basis
+        binary_image = largest_component_2D_slice(binary_image)
+        input_features[self.out_label] = binary_image
+
+
 class PadImages(ImageProcessor):
     def __init__(self, bounding_box_expansion=(10, 10, 10), power_val_z=1, power_val_x=1,
                  power_val_y=1, min_val=None, image_keys=('image', 'annotation'),
