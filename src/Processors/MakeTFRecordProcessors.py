@@ -341,6 +341,22 @@ class Gaussian_Uncertainty(ImageProcessor):
         return input_features
 
 
+class AddConstant(ImageProcessor):
+    def __init__(self, keys=('image',), values=(0,)):
+        """
+        :param keys: tuple of keys for addition
+        :param values: tuple of values for addition
+        """
+        self.keys = keys
+        self.values = values
+
+    def parse(self, image_features, *args, **kwargs):
+        _check_keys_(input_features=image_features, keys=self.keys)
+        for key, value in zip(self.keys, self.values):
+            image_features[key] = image_features[key] + value
+        return image_features
+
+
 class Combine_Annotations(ImageProcessor):
     def __init__(self, annotation_input=[5, 6, 7, 8], to_annotation=5):
         self.annotation_input = annotation_input
