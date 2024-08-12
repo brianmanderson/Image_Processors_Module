@@ -2686,6 +2686,25 @@ class IdentifyBodyContour(ImageProcessor):
         input_features[self.out_label] = binary_image
 
 
+class ConvertBodyContourToCentroidLine(ImageProcessor):
+    def __init__(self, body_handle_key, out_key):
+        self.body_handle_key = body_handle_key
+        self.out_key = out_key
+        self.label_shape_filter = sitk.LabelShapeStatisticsImageFilter()
+
+    def pre_process(self, input_features):
+        _check_keys_(input_features=input_features, keys=(self.body_handle_key,))
+        label_image = input_features[self.body_handle_key]
+        self.label_shape_filter.Execute(label_image)
+
+        # Step 4: Calculate the centroid of the largest component
+        centroid = self.label_shape_filter.GetCentroid(1)
+
+        # Convert the centroid to index coordinates
+        centroid_index = label_image.TransformPhysicalPointToIndex(centroid)
+        x = 1
+
+
 class PadImages(ImageProcessor):
     def __init__(self, bounding_box_expansion=(10, 10, 10), power_val_z=1, power_val_x=1,
                  power_val_y=1, min_val=None, image_keys=('image', 'annotation'),
