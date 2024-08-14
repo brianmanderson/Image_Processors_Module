@@ -2667,7 +2667,7 @@ def largest_component_2D_slice(binary_image):
         # Create a binary mask of the largest component
         largest_component = sitk.BinaryThreshold(label_image, lowerThreshold=largest_label,
                                                  upperThreshold=largest_label, insideValue=1, outsideValue=0)
-
+        largest_component = sitk.BinaryFillhole(largest_component)
         # Convert the largest component back to numpy array and add to the list
         processed_slices.append(sitk.GetArrayFromImage(largest_component))
 
@@ -2686,11 +2686,13 @@ class IdentifyBodyContour(ImageProcessor):
     2D components
     """
     def __init__(self, image_key='image_handle', lower_threshold=-50, upper_threshold=1000,
-                 out_label='body_handle'):
+                 out_label='body_handle', dilation_erosion_radius=3):
         self.image_key = image_key
         self.lower_threshold = lower_threshold
         self.upper_threshold = upper_threshold
         self.out_label = out_label
+        self.label_shape_filter = sitk.LabelShapeStatisticsImageFilter()
+        self.dilation_erosion_radius = dilation_erosion_radius
 
     def pre_process(self, input_features):
         _check_keys_(input_features, (self.image_key,))
@@ -2699,6 +2701,31 @@ class IdentifyBodyContour(ImageProcessor):
                                             upperThreshold=self.upper_threshold, insideValue=1, outsideValue=0)
         # Step 1: Find largest connected component on a 2D slice basis
         binary_image = largest_component_2D_slice(binary_image)
+
+        # Step 2: Remove outlier pieces, like table
+        label_image = sitk.ConnectedComponent(binary_image)
+
+        # Analyze the connected components
+        self.label_shape_filter.Execute(label_image)
+
+        # Find the label of the largest component
+        largest_label = max(self.label_shape_filter.GetLabels(), key=lambda
+            label: self.label_shape_filter.GetPhysicalSize(label))
+
+        # Next, lets dilate a little to clean up
+        binary_image = sitk.BinaryThreshold(label_image, lowerThreshold=largest_label,
+                                            upperThreshold=largest_label, insideValue=1, outsideValue=0)
+        # Perform binary dilation using the structuring element
+        smeared_image = sitk.BinaryDilate(binary_image, kernelRadius=[self.dilation_erosion_radius]*3,
+                                          kernelType=sitk.sitkBall)
+
+
+        #And fill in any holes
+        binary_image = sitk.BinaryFillhole(smeared_image)
+
+        # And undo part of the dilation
+        binary_image = sitk.BinaryErode(binary_image, kernelRadius=[self.dilation_erosion_radius] * 3,
+                                        kernelType=sitk.sitkBall)
         input_features[self.out_label] = binary_image
 
 
@@ -2718,7 +2745,18 @@ class ConvertBodyContourToCentroidLine(ImageProcessor):
 
         # Convert the centroid to index coordinates
         centroid_index = label_image.TransformPhysicalPointToIndex(centroid)
-        x = 1
+
+        mask_numpy = np.zeros(label_image.GetSize()[::-1]).astype('uint8')
+        mask_numpy[:, centroid_index[1], centroid_index[0]] = 1
+
+        # Create an empty binary image of the same size (all zeros)
+        centroid_image = sitk.GetImageFromArray(mask_numpy)
+        centroid_image.SetOrigin(label_image.GetOrigin())
+        centroid_image.SetSpacing(label_image.GetSpacing())
+        centroid_image.SetDirection(label_image.GetDirection())
+        overlap_handle = sitk.And(centroid_image, label_image)
+        input_features[self.out_key] = overlap_handle
+        return input_features
 
 
 class PadImages(ImageProcessor):
