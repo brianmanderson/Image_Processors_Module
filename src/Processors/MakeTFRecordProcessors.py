@@ -628,7 +628,15 @@ class DilateNiftiiHandles(ImageProcessor):
         for key in self.dilate_keys:
             mask_handle = input_features[key]
             assert type(mask_handle) is sitk.Image, 'Pass a SimpleITK Image'
-            mask_handle = self.dilate_filter.Execute(mask_handle)
+            out_array = []
+            mask_array = sitk.GetArrayFromImage(mask_handle)
+            for z in range(mask_array.shape[-1]):
+                temp_handle = sitk.GetImageFromArray(mask_array[..., z])
+                _orient_handles_(temp_handle, mask_handle)
+                temp_handle = self.dilate_filter.Execute(temp_handle)
+                out_array.append(sitk.GetArrayFromImage(temp_handle)[..., None])
+            out_array = np.concatenate(out_array, axis=-1)
+            mask_handle = sitk.GetImageFromArray(out_array)
             input_features[key] = mask_handle
         return input_features
 
@@ -1134,14 +1142,23 @@ class SqueezeDimensions(ImageProcessor):
 
 
 class ExpandDimensions(ImageProcessor):
-    def __init__(self, image_keys=('image', 'annotation'), axis=-1):
+    def __init__(self, image_keys=('image', 'annotation'), axis=-1, post_process_keys=('image', 'prediction')):
         self.image_keys = image_keys
         self.axis = axis
+        self.post_process_keys = post_process_keys
 
     def pre_process(self, input_features):
         _check_keys_(input_features, self.image_keys)
         for key in self.image_keys:
             input_features[key] = np.expand_dims(input_features[key], axis=self.axis)
+        return input_features
+
+    def post_process(self, input_features):
+        _check_keys_(input_features, self.post_process_keys)
+        for key in self.post_process_keys:
+            i = input_features[key]
+            i = np.squeeze(i, axis=self.axis)
+            input_features[key] = i
         return input_features
 
 
@@ -1280,6 +1297,20 @@ class DeleteKeys(ImageProcessor):
         _check_keys_(input_features=input_features, keys=self.keys_to_delete)
         for key in self.keys_to_delete:
             del input_features[key]
+        return input_features
+
+
+class ArrayToNiftii(ImageProcessor):
+    def __init__(self, array_keys=('prediction',), out_keys=('prediction_handle',)):
+        self.array_keys, self.out_keys = array_keys, out_keys
+
+    def pre_process(self, input_features):
+        _check_keys_(input_features=input_features, keys=self.array_keys)
+        for array_key, out_key in zip(self.array_keys, self.out_keys):
+            image_array = input_features[array_key]
+            assert type(image_array) is np.ndarray, 'Only NumPy arrays should be passed here!'
+            image_handle = sitk.GetImageFromArray(image_array)
+            input_features[out_key] = image_handle
         return input_features
 
 
@@ -2240,7 +2271,8 @@ class Fill_Binary_Holes(ImageProcessor):
             output = self.BinaryfillFilter.Execute(k)
             output_array = sitk.GetArrayFromImage(output)
             pred[..., class_num] = output_array
-        input_features[self.prediction_key] = pred
+        pred[..., 0] = 0
+        input_features[self.prediction_key] = pred.astype('int8')
         return input_features
 
 
@@ -2660,8 +2692,11 @@ def largest_component_2D_slice(binary_image):
         label_shape_filter.Execute(label_image)
 
         # Find the label of the largest component
-        largest_label = max(label_shape_filter.GetLabels(), key=lambda label: label_shape_filter.GetPhysicalSize(label))
-
+        labels = label_shape_filter.GetLabels()
+        largest_label = 0
+        if len(labels) != 0:
+            largest_label = max(label_shape_filter.GetLabels(),
+                                key=lambda label: label_shape_filter.GetPhysicalSize(label))
         # Create a binary mask of the largest component
         largest_component = sitk.BinaryThreshold(label_image, lowerThreshold=largest_label,
                                                  upperThreshold=largest_label, insideValue=1, outsideValue=0)
@@ -2725,6 +2760,7 @@ class IdentifyBodyContour(ImageProcessor):
         binary_image = sitk.BinaryErode(binary_image, kernelRadius=[self.dilation_erosion_radius] * 3,
                                         kernelType=sitk.sitkBall)
         input_features[self.out_label] = binary_image
+        return input_features
 
 
 class ConvertBodyContourToCentroidLine(ImageProcessor):
