@@ -787,9 +787,7 @@ class Resampler(ImageProcessor):
                                                                                   'Image or "spacing" key'
             if input_spacing is None:
                 input_spacing = image_handle.GetSpacing()
-            image_array = None
             if type(image_handle) is np.ndarray:
-                image_array = image_handle
                 image_handle = sitk.GetImageFromArray(image_handle)
                 image_handle.SetSpacing(input_spacing)
 
