@@ -2773,30 +2773,36 @@ class ConvertBodyContourToCentroidLine(ImageProcessor):
     def pre_process(self, input_features):
         _check_keys_(input_features=input_features, keys=(self.body_handle_key,))
         label_image = input_features[self.body_handle_key]
+        label_image: sitk.Image
         if self.extent_evaluated != 1:
             image_x, image_y, image_z = label_image.GetSize()
             if self.extent_evaluated > 0:
                 label_image = label_image[:, :, int(image_z*self.extent_evaluated):]
             else:
                 label_image = label_image[:, :, :int(image_z * self.extent_evaluated)]
-        self.label_shape_filter.Execute(label_image)
-
-        # Step 4: Calculate the centroid of the largest component
-        centroid = self.label_shape_filter.GetCentroid(1)
-
-        # Convert the centroid to index coordinates
-        centroid_index = label_image.TransformPhysicalPointToIndex(centroid)
-
         mask_numpy = np.zeros(label_image.GetSize()[::-1]).astype('uint8')
-        mask_numpy[:, centroid_index[1], centroid_index[0]] = 1
+        summed_image = np.sum(sitk.GetArrayFromImage(label_image), axis=(1, 2))
+        for i in range(label_image.GetSize()[-1]):
+            if summed_image[i] == 0:
+                continue
+            label_image_slice = label_image[..., i]
+            self.label_shape_filter.Execute(label_image_slice)
+
+            # Step 4: Calculate the centroid of the largest component
+            centroid = self.label_shape_filter.GetCentroid(1)
+
+            # Convert the centroid to index coordinates
+            centroid_index = label_image_slice.TransformPhysicalPointToIndex(centroid)
+
+
+            mask_numpy[i, centroid_index[1], centroid_index[0]] = 1
 
         # Create an empty binary image of the same size (all zeros)
         centroid_image = sitk.GetImageFromArray(mask_numpy)
         centroid_image.SetOrigin(label_image.GetOrigin())
         centroid_image.SetSpacing(label_image.GetSpacing())
         centroid_image.SetDirection(label_image.GetDirection())
-        overlap_handle = sitk.And(centroid_image, label_image)
-        input_features[self.out_key] = overlap_handle
+        input_features[self.out_key] = centroid_image
         return input_features
 
 
