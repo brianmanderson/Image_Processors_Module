@@ -2764,14 +2764,21 @@ class IdentifyBodyContour(ImageProcessor):
 
 
 class ConvertBodyContourToCentroidLine(ImageProcessor):
-    def __init__(self, body_handle_key, out_key):
+    def __init__(self, body_handle_key, out_key, extent_evaluated=1):
         self.body_handle_key = body_handle_key
         self.out_key = out_key
         self.label_shape_filter = sitk.LabelShapeStatisticsImageFilter()
+        self.extent_evaluated=extent_evaluated
 
     def pre_process(self, input_features):
         _check_keys_(input_features=input_features, keys=(self.body_handle_key,))
         label_image = input_features[self.body_handle_key]
+        if self.extent_evaluated != 1:
+            image_x, image_y, image_z = label_image.GetSize()
+            if self.extent_evaluated > 0:
+                label_image = label_image[:, :, int(image_z*self.extent_evaluated):]
+            else:
+                label_image = label_image[:, :, :int(image_z * self.extent_evaluated)]
         self.label_shape_filter.Execute(label_image)
 
         # Step 4: Calculate the centroid of the largest component
