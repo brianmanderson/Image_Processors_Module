@@ -735,7 +735,9 @@ class ResampleSITKHandles(ImageProcessor):
             assert type(image_handle) is sitk.Image, 'Pass a SimpleITK Image'
             input_spacing = image_handle.GetSpacing()
             output_spacing = []
-            output_size = []
+            output_size = None
+            if self.desired_output_size is not None:
+                output_size = []
             for index in range(3):
                 if self.desired_output_spacing[index] is None:
                     if (self.desired_output_size[index] is None or
@@ -746,10 +748,11 @@ class ResampleSITKHandles(ImageProcessor):
                         output_spacing.append(new_space)
                 else:
                     output_spacing.append(self.desired_output_spacing[index])
-                if self.desired_output_size is None or self.desired_output_size[index] is None:
-                    output_size.append(input_size[index])
-                else:
-                    output_size.append(self.desired_output_size[index])
+                if self.desired_output_size is not None:
+                    if self.desired_output_size[index] is None:
+                        output_size.append(input_size[index])
+                    else:
+                        output_size.append(self.desired_output_size[index])
             output_spacing = tuple(output_spacing)
             input_features['{}_original_spacing'.format(key)] = np.asarray(input_spacing, dtype='float32')
             input_features['{}_output_spacing'.format(key)] = np.asarray(output_spacing, dtype='float32')
