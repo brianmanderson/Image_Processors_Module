@@ -178,6 +178,20 @@ class FixOutputShapes(ImageProcessor):
         return image_features
 
 
+class DefineShape(ImageProcessor):
+    def __init__(self, keys=('image_array', 'mask_array'), image_shapes=([None, None, None, 1], [None, None, None, 2])):
+        self.keys = keys
+        self.image_shapes = image_shapes
+
+    def parse(self, input_features):
+        _check_keys_(input_features, self.keys)
+        for key, shape in zip(self.keys, self.image_shapes):
+            image = input_features[key]
+            image.set_shape(shape)
+            input_features[key] = image
+        return input_features
+
+
 class FixOutputShapesPostOutput(ImageProcessor):
     def __init__(self, image_shapes=([1, None, None, None, 1], [1, None, None, None, 2]),
                  as_tuple=True):
@@ -407,6 +421,97 @@ class Return_Lung(ImageProcessor):
     def parse(self, image_features, *args, **kwargs):
         if self.dual_output:
             image_features['lung'] = tf.cast(image_features['annotation'] > 0, dtype='float32')
+        return image_features
+
+
+class ShiftImages(ImageProcessor):
+    def __init__(self, keys=('image', 'mask'), channel_dimensions=(1, 1), fill_value=None, fill_mode="reflect", interpolation="bilinear",
+                 seed=None, height_factor=0.0, width_factor=0.0, on_global_3D=True, num_images=32):
+        """
+    Args:
+        height_factor: a float represented as fraction of value, or a tuple of
+            size 2 representing lower and upper bound for shifting vertically. A
+            negative value means shifting image up, while a positive value means
+            shifting image down. When represented as a single positive float,
+            this value is used for both the upper and lower bound. For instance,
+            `height_factor=(-0.2, 0.3)` results in an output shifted by a random
+            amount in the range `[-20%, +30%]`. `height_factor=0.2` results in
+            an output height shifted by a random amount in the range
+            `[-20%, +20%]`.
+        width_factor: a float represented as fraction of value, or a tuple of
+            size 2 representing lower and upper bound for shifting horizontally.
+            A negative value means shifting image left, while a positive value
+            means shifting image right. When represented as a single positive
+            float, this value is used for both the upper and lower bound. For
+            instance, `width_factor=(-0.2, 0.3)` results in an output shifted
+            left by 20%, and shifted right by 30%. `width_factor=0.2` results
+            in an output height shifted left or right by 20%.
+        fill_mode: Points outside the boundaries of the input are filled
+            according to the given mode. Available methods are `"constant"`,
+            `"nearest"`, `"wrap"` and `"reflect"`. Defaults to `"constant"`.
+            - `"reflect"`: `(d c b a | a b c d | d c b a)`
+                The input is extended by reflecting about the edge of the last
+                pixel.
+            - `"constant"`: `(k k k k | a b c d | k k k k)`
+                The input is extended by filling all values beyond
+                the edge with the same constant value k specified by
+                `fill_value`.
+            - `"wrap"`: `(a b c d | a b c d | a b c d)`
+                The input is extended by wrapping around to the opposite edge.
+            - `"nearest"`: `(a a a a | a b c d | d d d d)`
+                The input is extended by the nearest pixel.
+            Note that when using torch backend, `"reflect"` is redirected to
+            `"mirror"` `(c d c b | a b c d | c b a b)` because torch does not
+            support `"reflect"`.
+            Note that torch backend does not support `"wrap"`.
+        interpolation: Interpolation mode. Supported values: `"nearest"`,
+            `"bilinear"`.
+        seed: Integer. Used to create a random seed.
+        fill_value: a float represents the value to be filled outside the
+            boundaries when `fill_mode="constant"`.
+        """
+        self.height_factor = height_factor
+        self.width_factor = width_factor
+        self.interpolation = interpolation
+        self.fill_value = fill_value
+        self.fill_mode = fill_mode
+        self.random_translation = tf.keras.layers.RandomTranslation(height_factor=height_factor,
+                                                                    width_factor=width_factor,
+                                                                    interpolation=interpolation,
+                                                                    fill_value=fill_value, seed=seed,
+                                                                    fill_mode=fill_mode)
+        self.translations = []
+        if on_global_3D and num_images > 0:
+            for _ in range(num_images):
+                self.translations.append(
+                    tf.keras.layers.RandomTranslation(height_factor=height_factor,
+                                                      width_factor=width_factor,
+                                                      interpolation=interpolation,
+                                                      fill_value=fill_value, seed=seed,
+                                                      fill_mode=fill_mode)
+                )
+        self.keys = keys
+        self.channel_dimensions = channel_dimensions
+        self.global_3D = on_global_3D
+
+    def parse(self, image_features, *args, **kwargs):
+        _check_keys_(input_features=image_features, keys=self.keys)
+        combine_images = [image_features[i] for i in self.keys]
+        shift_image = tf.concat(combine_images, axis=-1)
+        if not self.global_3D:
+            shifted_image = self.random_translation(shift_image)
+        else:
+            shifted_image = []
+            for i in range(len(self.translations)):
+                shifted_image.append(tf.expand_dims(self.translations[i](shift_image[i]), axis=0))
+            shifted_image = tf.concat(shifted_image, axis=0)
+        start_dim = 0
+        for key in self.keys:
+            dimension = image_features[key].shape[-1]
+            end_dim = start_dim + dimension
+            new_image = shifted_image[..., start_dim:end_dim]
+            start_dim += dimension
+            image_features[key] = new_image
         return image_features
 
 
