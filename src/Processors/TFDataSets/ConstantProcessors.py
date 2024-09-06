@@ -426,7 +426,7 @@ class Return_Lung(ImageProcessor):
 
 class ShiftImages(ImageProcessor):
     def __init__(self, keys=('image', 'mask'), channel_dimensions=(1, 1), fill_value=None, fill_mode="reflect", interpolation="bilinear",
-                 seed=None, height_factor=0.0, width_factor=0.0, on_global_3D=True, num_images=32):
+                 seed=None, height_factor=0.0, width_factor=0.0, on_global_3D=True, image_shape=(32, 320, 320, 3)):
         """
     Args:
         height_factor: a float represented as fraction of value, or a tuple of
@@ -470,6 +470,7 @@ class ShiftImages(ImageProcessor):
         fill_value: a float represents the value to be filled outside the
             boundaries when `fill_mode="constant"`.
         """
+        self.og_shape = image_shape
         self.height_factor = height_factor
         self.width_factor = width_factor
         self.interpolation = interpolation
@@ -496,7 +497,7 @@ class ShiftImages(ImageProcessor):
         _check_keys_(input_features=image_features, keys=self.keys)
         combine_images = [image_features[i] for i in self.keys]
         shift_image = tf.concat(combine_images, axis=-1)
-        og_shape = shift_image.shape
+        og_shape = self.og_shape
         if self.height_factor != 0.0:
             if self.global_3D:
                 shift_image = tf.reshape(shift_image, [og_shape[0] * og_shape[1]] + [i for i in og_shape[2:]])
