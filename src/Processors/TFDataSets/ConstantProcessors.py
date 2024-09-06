@@ -475,21 +475,19 @@ class ShiftImages(ImageProcessor):
         self.interpolation = interpolation
         self.fill_value = fill_value
         self.fill_mode = fill_mode
-        self.random_translation = tf.keras.layers.RandomTranslation(height_factor=height_factor,
-                                                                    width_factor=width_factor,
-                                                                    interpolation=interpolation,
-                                                                    fill_value=fill_value, seed=seed,
-                                                                    fill_mode=fill_mode)
-        self.translations = []
-        if on_global_3D and num_images > 0:
-            for _ in range(num_images):
-                self.translations.append(
-                    tf.keras.layers.RandomTranslation(height_factor=height_factor,
-                                                      width_factor=width_factor,
-                                                      interpolation=interpolation,
-                                                      fill_value=fill_value, seed=seed,
-                                                      fill_mode=fill_mode)
-                )
+        """
+        I know that this has height_factor equal to 0, do not change it! We reshape things later
+        """
+        self.random_translation_height = tf.keras.layers.RandomTranslation(height_factor=0.0,
+                                                                           width_factor=height_factor,
+                                                                           interpolation=interpolation,
+                                                                           fill_value=fill_value, seed=seed,
+                                                                           fill_mode=fill_mode)
+        self.random_translation_width = tf.keras.layers.RandomTranslation(height_factor=0.0,
+                                                                          width_factor=width_factor,
+                                                                          interpolation=interpolation,
+                                                                          fill_value=fill_value, seed=seed,
+                                                                          fill_mode=fill_mode)
         self.keys = keys
         self.channel_dimensions = channel_dimensions
         self.global_3D = on_global_3D
@@ -498,13 +496,21 @@ class ShiftImages(ImageProcessor):
         _check_keys_(input_features=image_features, keys=self.keys)
         combine_images = [image_features[i] for i in self.keys]
         shift_image = tf.concat(combine_images, axis=-1)
-        if not self.global_3D:
-            shifted_image = self.random_translation(shift_image)
-        else:
-            shifted_image = []
-            for i in range(len(self.translations)):
-                shifted_image.append(tf.expand_dims(self.translations[i](shift_image[i]), axis=0))
-            shifted_image = tf.concat(shifted_image, axis=0)
+        og_shape = shift_image.shape
+        if self.height_factor != 0.0:
+            if self.global_3D:
+                shift_image = tf.reshape(shift_image, [og_shape[0] * og_shape[1]] + [i for i in og_shape[2:]])
+            shift_image = self.random_translation_width(shift_image)
+            if self.global_3D:
+                shift_image = tf.reshape(shift_image, og_shape)
+        if self.width_factor != 0.0:
+            if self.global_3D:
+                shift_image = tf.reshape(tf.transpose(shift_image, [0, 2, 1, 3]), [og_shape[0] * og_shape[1], og_shape[2]] + [i for i in og_shape[3:]])
+            shift_image = self.random_translation_width(shift_image)
+            if self.global_3D:
+                shift_image = tf.reshape(shift_image, og_shape)
+                shift_image = tf.transpose(shift_image, [0, 2, 1, 3])
+        shifted_image = shift_image
         start_dim = 0
         for key in self.keys:
             dimension = image_features[key].shape[-1]
