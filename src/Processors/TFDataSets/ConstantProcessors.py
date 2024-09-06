@@ -424,6 +424,19 @@ class Return_Lung(ImageProcessor):
         return image_features
 
 
+class TakeAxis(ImageProcessor):
+    def __init__(self, keys=('mask_array',), wanted_axis=(1,)):
+        self.keys = keys
+        self.wanted_axis = wanted_axis
+
+    def parse(self, image_features, *args, **kwargs):
+        _check_keys_(image_features, self.keys)
+        for key, axis in zip(self.keys, self.wanted_axis):
+            image = image_features[key]
+            image_features[key] = image[..., axis]
+        return image_features
+
+
 class ShiftImages(ImageProcessor):
     def __init__(self, keys=('image', 'mask'), channel_dimensions=(1, 1), fill_value=None, fill_mode="reflect", interpolation="bilinear",
                  seed=None, height_factor=0.0, width_factor=0.0, on_global_3D=True, image_shape=(32, 320, 320, 3)):
