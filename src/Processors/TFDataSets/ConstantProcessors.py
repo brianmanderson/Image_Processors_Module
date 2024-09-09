@@ -522,13 +522,13 @@ class ShiftImages(ImageProcessor):
         combine_images = [image_features[i] for i in self.keys]
         shift_image = tf.concat(combine_images, axis=-1)
         og_shape = self.og_shape
-        if self.height_factor != 0.0:
+        if self.random_translation_height:
             if self.global_3D:
                 shift_image = tf.reshape(shift_image, [og_shape[0] * og_shape[1]] + [i for i in og_shape[2:]])
             shift_image = self.random_translation_height(shift_image)
             if self.global_3D:
                 shift_image = tf.reshape(shift_image, og_shape)
-        if self.width_factor != 0.0:
+        if self.random_translation_width:
             if self.global_3D:
                 shift_image = tf.reshape(tf.transpose(shift_image, [0, 2, 1, 3]), [og_shape[0] * og_shape[1], og_shape[2]] + [i for i in og_shape[3:]])
             shift_image = self.random_translation_width(shift_image)
