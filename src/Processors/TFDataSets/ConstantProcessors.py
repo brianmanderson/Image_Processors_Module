@@ -507,9 +507,9 @@ class ShiftImages(ImageProcessor):
                                                                               interpolation=interpolation,
                                                                               fill_value=fill_value, seed=seed,
                                                                               fill_mode=fill_mode)
-        if vert_factor != 0.0:
-            self.random_translation_vert = tf.keras.layers.RandomTranslation(height_factor=0.0,
-                                                                             width_factor=vert_factor,
+        if vert_factor != 0.0 and on_global_3D:
+            self.random_translation_vert = tf.keras.layers.RandomTranslation(height_factor=vert_factor,
+                                                                             width_factor=0.0,
                                                                              interpolation=interpolation,
                                                                              fill_value=fill_value, seed=seed,
                                                                              fill_mode=fill_mode)
@@ -535,6 +535,10 @@ class ShiftImages(ImageProcessor):
             if self.global_3D:
                 shift_image = tf.reshape(shift_image, og_shape)
                 shift_image = tf.transpose(shift_image, [0, 2, 1, 3])
+        if self.random_translation_vert and self.global_3D:
+            shift_image = tf.reshape(shift_image, [og_shape[0], og_shape[1] * og_shape[2]] + [i for i in og_shape[3:]])
+            shift_image = self.random_translation_vert(shift_image)
+            shift_image = tf.reshape(shift_image, og_shape)
         shifted_image = shift_image
         start_dim = 0
         for key in self.keys:
