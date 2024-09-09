@@ -108,7 +108,7 @@ class Decode_Images_Annotations(DecodeImagesAnnotations):
         super().__init__(**kwargs)
 
 
-class Random_Noise(ImageProcessor):
+class RandomNoise(ImageProcessor):
     def __init__(self, max_noise=2.5, wanted_keys=('image',)):
         '''
         Return the image feature with an additive noise randomly weighted between [0.0, max_noise)
@@ -124,7 +124,7 @@ class Random_Noise(ImageProcessor):
                 dtype = data.dtype
                 data = tf.cast(data, 'float32')
                 data += tf.random.uniform(shape=[], minval=0.0, maxval=self.max_noise,
-                                          dtype='float32') * tf.random.normal(tf.shape(image_features['image']),
+                                          dtype='float32') * tf.random.normal(tf.shape(image_features[key]),
                                                                               mean=0.0, stddev=1.0, dtype='float32')
                 data = tf.cast(data, dtype)
                 image_features[key] = data
