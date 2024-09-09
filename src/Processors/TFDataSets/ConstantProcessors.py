@@ -118,6 +118,8 @@ class RandomNoise(ImageProcessor):
         self.wanted_keys = wanted_keys
 
     def parse(self, image_features, *args, **kwargs):
+        if self.max_noise == 0.0:
+            return image_features
         for key in self.wanted_keys:
             if key in image_features:
                 data = image_features[key]
