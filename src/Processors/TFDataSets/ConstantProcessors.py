@@ -439,7 +439,7 @@ class TakeAxis(ImageProcessor):
 
 class ShiftImages(ImageProcessor):
     def __init__(self, keys=('image', 'mask'), channel_dimensions=(1, 1), fill_value=None, fill_mode="reflect", interpolation="bilinear",
-                 seed=None, height_factor=0.0, width_factor=0.0, on_global_3D=True, image_shape=(32, 320, 320, 3)):
+                 seed=None, height_factor=0.0, width_factor=0.0, vert_factor=0.0, on_global_3D=True, image_shape=(32, 320, 320, 3)):
         """
     Args:
         height_factor: a float represented as fraction of value, or a tuple of
@@ -492,16 +492,27 @@ class ShiftImages(ImageProcessor):
         """
         I know that this has height_factor equal to 0, do not change it! We reshape things later
         """
-        self.random_translation_height = tf.keras.layers.RandomTranslation(height_factor=0.0,
-                                                                           width_factor=height_factor,
-                                                                           interpolation=interpolation,
-                                                                           fill_value=fill_value, seed=seed,
-                                                                           fill_mode=fill_mode)
-        self.random_translation_width = tf.keras.layers.RandomTranslation(height_factor=0.0,
-                                                                          width_factor=width_factor,
-                                                                          interpolation=interpolation,
-                                                                          fill_value=fill_value, seed=seed,
-                                                                          fill_mode=fill_mode)
+        self.random_translation_height = None
+        self.random_translation_width = None
+        self.random_translation_vert = None
+        if height_factor != 0.0:
+            self.random_translation_height = tf.keras.layers.RandomTranslation(height_factor=0.0,
+                                                                               width_factor=height_factor,
+                                                                               interpolation=interpolation,
+                                                                               fill_value=fill_value, seed=seed,
+                                                                               fill_mode=fill_mode)
+        if width_factor != 0.0:
+            self.random_translation_width = tf.keras.layers.RandomTranslation(height_factor=0.0,
+                                                                              width_factor=width_factor,
+                                                                              interpolation=interpolation,
+                                                                              fill_value=fill_value, seed=seed,
+                                                                              fill_mode=fill_mode)
+        if vert_factor != 0.0:
+            self.random_translation_vert = tf.keras.layers.RandomTranslation(height_factor=0.0,
+                                                                             width_factor=vert_factor,
+                                                                             interpolation=interpolation,
+                                                                             fill_value=fill_value, seed=seed,
+                                                                             fill_mode=fill_mode)
         self.keys = keys
         self.channel_dimensions = channel_dimensions
         self.global_3D = on_global_3D
@@ -514,7 +525,7 @@ class ShiftImages(ImageProcessor):
         if self.height_factor != 0.0:
             if self.global_3D:
                 shift_image = tf.reshape(shift_image, [og_shape[0] * og_shape[1]] + [i for i in og_shape[2:]])
-            shift_image = self.random_translation_width(shift_image)
+            shift_image = self.random_translation_height(shift_image)
             if self.global_3D:
                 shift_image = tf.reshape(shift_image, og_shape)
         if self.width_factor != 0.0:
