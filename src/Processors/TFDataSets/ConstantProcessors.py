@@ -439,9 +439,57 @@ class TakeAxis(ImageProcessor):
         return image_features
 
 
+class FlipImages(ImageProcessor):
+    def __init__(self, keys=('image', 'mask'), seed=None,
+                 flip_up_down=False, flip_left_right=False, on_global_3D=True, image_shape=(32, 320, 320, 3)):
+        self.og_shape = image_shape
+        self.flip_up_down = flip_up_down
+        self.flip_left_right = flip_left_right
+        """
+        I know that this has height_factor equal to 0, do not change it! We reshape things later
+        """
+        self.random_flip_up_down = None
+        self.random_flip_left_right = None
+        if flip_up_down:
+            self.random_flip_up_down = tf.keras.layers.RandomFlip(mode='horizontal', seed=seed)
+        if flip_left_right:
+            self.random_flip_left_right = tf.keras.layers.RandomFlip(mode='vertical', seed=seed)
+        self.keys = keys
+        self.global_3D = on_global_3D
+
+    def parse(self, image_features, *args, **kwargs):
+        _check_keys_(input_features=image_features, keys=self.keys)
+        combine_images = [image_features[i] for i in self.keys]
+        flip_image = tf.concat(combine_images, axis=-1)
+        og_shape = self.og_shape
+        if self.flip_up_down:
+            if self.global_3D:
+                flip_image = tf.reshape(flip_image, [og_shape[0] * og_shape[1]] + [i for i in og_shape[2:]])
+            flip_image = self.random_flip_up_down(flip_image)
+            if self.global_3D:
+                flip_image = tf.reshape(flip_image, og_shape)
+        if self.flip_left_right:
+            if self.global_3D:
+                flip_image = tf.reshape(tf.transpose(flip_image, [0, 2, 1, 3]), [og_shape[0] * og_shape[1], og_shape[2]] + [i for i in og_shape[3:]])
+            flip_image = self.random_flip_left_right(flip_image)
+            if self.global_3D:
+                flip_image = tf.reshape(flip_image, og_shape)
+                flip_image = tf.transpose(flip_image, [0, 2, 1, 3])
+        flipped_image = flip_image
+        start_dim = 0
+        for key in self.keys:
+            dimension = image_features[key].shape[-1]
+            end_dim = start_dim + dimension
+            new_image = flipped_image[..., start_dim:end_dim]
+            start_dim += dimension
+            image_features[key] = new_image
+        return image_features
+
+
 class ShiftImages(ImageProcessor):
-    def __init__(self, keys=('image', 'mask'), channel_dimensions=(1, 1), fill_value=None, fill_mode="reflect", interpolation="bilinear",
-                 seed=None, height_factor=0.0, width_factor=0.0, vert_factor=0.0, on_global_3D=True, image_shape=(32, 320, 320, 3)):
+    def __init__(self, keys=('image', 'mask'), fill_value=None, fill_mode="reflect", interpolation="bilinear",
+                 seed=None, height_factor=0.0, width_factor=0.0, vert_factor=0.0, on_global_3D=True,
+                 image_shape=(32, 320, 320, 3)):
         """
     Args:
         height_factor: a float represented as fraction of value, or a tuple of
@@ -516,7 +564,6 @@ class ShiftImages(ImageProcessor):
                                                                              fill_value=fill_value, seed=seed,
                                                                              fill_mode=fill_mode)
         self.keys = keys
-        self.channel_dimensions = channel_dimensions
         self.global_3D = on_global_3D
 
     def parse(self, image_features, *args, **kwargs):
