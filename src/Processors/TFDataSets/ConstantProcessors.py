@@ -108,7 +108,7 @@ class Decode_Images_Annotations(DecodeImagesAnnotations):
         super().__init__(**kwargs)
 
 
-class Random_Noise(ImageProcessor):
+class RandomNoise(ImageProcessor):
     def __init__(self, max_noise=2.5, wanted_keys=('image',)):
         '''
         Return the image feature with an additive noise randomly weighted between [0.0, max_noise)
@@ -118,13 +118,15 @@ class Random_Noise(ImageProcessor):
         self.wanted_keys = wanted_keys
 
     def parse(self, image_features, *args, **kwargs):
+        if self.max_noise == 0.0:
+            return image_features
         for key in self.wanted_keys:
             if key in image_features:
                 data = image_features[key]
                 dtype = data.dtype
                 data = tf.cast(data, 'float32')
                 data += tf.random.uniform(shape=[], minval=0.0, maxval=self.max_noise,
-                                          dtype='float32') * tf.random.normal(tf.shape(image_features['image']),
+                                          dtype='float32') * tf.random.normal(tf.shape(image_features[key]),
                                                                               mean=0.0, stddev=1.0, dtype='float32')
                 data = tf.cast(data, dtype)
                 image_features[key] = data
@@ -176,6 +178,20 @@ class FixOutputShapes(ImageProcessor):
         for key, shape in zip(self.keys, self.image_shapes):
             image_features[key] = image_features[key].set_shape(shape)
         return image_features
+
+
+class DefineShape(ImageProcessor):
+    def __init__(self, keys=('image_array', 'mask_array'), image_shapes=([None, None, None, 1], [None, None, None, 2])):
+        self.keys = keys
+        self.image_shapes = image_shapes
+
+    def parse(self, input_features):
+        _check_keys_(input_features, self.keys)
+        for key, shape in zip(self.keys, self.image_shapes):
+            image = input_features[key]
+            image.set_shape(shape)
+            input_features[key] = image
+        return input_features
 
 
 class FixOutputShapesPostOutput(ImageProcessor):
@@ -407,6 +423,179 @@ class Return_Lung(ImageProcessor):
     def parse(self, image_features, *args, **kwargs):
         if self.dual_output:
             image_features['lung'] = tf.cast(image_features['annotation'] > 0, dtype='float32')
+        return image_features
+
+
+class TakeAxis(ImageProcessor):
+    def __init__(self, keys=('mask_array',), wanted_axis=(1,)):
+        self.keys = keys
+        self.wanted_axis = wanted_axis
+
+    def parse(self, image_features, *args, **kwargs):
+        _check_keys_(image_features, self.keys)
+        for key, axis in zip(self.keys, self.wanted_axis):
+            image = image_features[key]
+            image_features[key] = image[..., axis]
+        return image_features
+
+
+class FlipImages(ImageProcessor):
+    def __init__(self, keys=('image', 'mask'), seed=None,
+                 flip_up_down=False, flip_left_right=False, on_global_3D=True, image_shape=(32, 320, 320, 3)):
+        self.og_shape = image_shape
+        self.flip_up_down = flip_up_down
+        self.flip_left_right = flip_left_right
+        """
+        I know that this has height_factor equal to 0, do not change it! We reshape things later
+        """
+        self.random_flip_up_down = None
+        self.random_flip_left_right = None
+        if flip_up_down:
+            self.random_flip_up_down = tf.keras.layers.RandomFlip(mode='horizontal', seed=seed)
+        if flip_left_right:
+            self.random_flip_left_right = tf.keras.layers.RandomFlip(mode='vertical', seed=seed)
+        self.keys = keys
+        self.global_3D = on_global_3D
+
+    def parse(self, image_features, *args, **kwargs):
+        _check_keys_(input_features=image_features, keys=self.keys)
+        combine_images = [image_features[i] for i in self.keys]
+        flip_image = tf.concat(combine_images, axis=-1)
+        og_shape = self.og_shape
+        if self.flip_up_down:
+            if self.global_3D:
+                flip_image = tf.reshape(flip_image, [og_shape[0] * og_shape[1]] + [i for i in og_shape[2:]])
+            flip_image = self.random_flip_up_down(flip_image)
+            if self.global_3D:
+                flip_image = tf.reshape(flip_image, og_shape)
+        if self.flip_left_right:
+            if self.global_3D:
+                flip_image = tf.reshape(tf.transpose(flip_image, [0, 2, 1, 3]), [og_shape[0] * og_shape[1], og_shape[2]] + [i for i in og_shape[3:]])
+            flip_image = self.random_flip_left_right(flip_image)
+            if self.global_3D:
+                flip_image = tf.reshape(flip_image, og_shape)
+                flip_image = tf.transpose(flip_image, [0, 2, 1, 3])
+        flipped_image = flip_image
+        start_dim = 0
+        for key in self.keys:
+            dimension = image_features[key].shape[-1]
+            end_dim = start_dim + dimension
+            new_image = flipped_image[..., start_dim:end_dim]
+            start_dim += dimension
+            image_features[key] = new_image
+        return image_features
+
+
+class ShiftImages(ImageProcessor):
+    def __init__(self, keys=('image', 'mask'), fill_value=None, fill_mode="reflect", interpolation="bilinear",
+                 seed=None, height_factor=0.0, width_factor=0.0, vert_factor=0.0, on_global_3D=True,
+                 image_shape=(32, 320, 320, 3)):
+        """
+    Args:
+        height_factor: a float represented as fraction of value, or a tuple of
+            size 2 representing lower and upper bound for shifting vertically. A
+            negative value means shifting image up, while a positive value means
+            shifting image down. When represented as a single positive float,
+            this value is used for both the upper and lower bound. For instance,
+            `height_factor=(-0.2, 0.3)` results in an output shifted by a random
+            amount in the range `[-20%, +30%]`. `height_factor=0.2` results in
+            an output height shifted by a random amount in the range
+            `[-20%, +20%]`.
+        width_factor: a float represented as fraction of value, or a tuple of
+            size 2 representing lower and upper bound for shifting horizontally.
+            A negative value means shifting image left, while a positive value
+            means shifting image right. When represented as a single positive
+            float, this value is used for both the upper and lower bound. For
+            instance, `width_factor=(-0.2, 0.3)` results in an output shifted
+            left by 20%, and shifted right by 30%. `width_factor=0.2` results
+            in an output height shifted left or right by 20%.
+        fill_mode: Points outside the boundaries of the input are filled
+            according to the given mode. Available methods are `"constant"`,
+            `"nearest"`, `"wrap"` and `"reflect"`. Defaults to `"constant"`.
+            - `"reflect"`: `(d c b a | a b c d | d c b a)`
+                The input is extended by reflecting about the edge of the last
+                pixel.
+            - `"constant"`: `(k k k k | a b c d | k k k k)`
+                The input is extended by filling all values beyond
+                the edge with the same constant value k specified by
+                `fill_value`.
+            - `"wrap"`: `(a b c d | a b c d | a b c d)`
+                The input is extended by wrapping around to the opposite edge.
+            - `"nearest"`: `(a a a a | a b c d | d d d d)`
+                The input is extended by the nearest pixel.
+            Note that when using torch backend, `"reflect"` is redirected to
+            `"mirror"` `(c d c b | a b c d | c b a b)` because torch does not
+            support `"reflect"`.
+            Note that torch backend does not support `"wrap"`.
+        interpolation: Interpolation mode. Supported values: `"nearest"`,
+            `"bilinear"`.
+        seed: Integer. Used to create a random seed.
+        fill_value: a float represents the value to be filled outside the
+            boundaries when `fill_mode="constant"`.
+        """
+        self.og_shape = image_shape
+        self.height_factor = height_factor
+        self.width_factor = width_factor
+        self.interpolation = interpolation
+        self.fill_value = fill_value
+        self.fill_mode = fill_mode
+        """
+        I know that this has height_factor equal to 0, do not change it! We reshape things later
+        """
+        self.random_translation_height = None
+        self.random_translation_width = None
+        self.random_translation_vert = None
+        if height_factor != 0.0:
+            self.random_translation_height = tf.keras.layers.RandomTranslation(height_factor=0.0,
+                                                                               width_factor=height_factor,
+                                                                               interpolation=interpolation,
+                                                                               fill_value=fill_value, seed=seed,
+                                                                               fill_mode=fill_mode)
+        if width_factor != 0.0:
+            self.random_translation_width = tf.keras.layers.RandomTranslation(height_factor=0.0,
+                                                                              width_factor=width_factor,
+                                                                              interpolation=interpolation,
+                                                                              fill_value=fill_value, seed=seed,
+                                                                              fill_mode=fill_mode)
+        if vert_factor != 0.0 and on_global_3D:
+            self.random_translation_vert = tf.keras.layers.RandomTranslation(height_factor=vert_factor,
+                                                                             width_factor=0.0,
+                                                                             interpolation=interpolation,
+                                                                             fill_value=fill_value, seed=seed,
+                                                                             fill_mode=fill_mode)
+        self.keys = keys
+        self.global_3D = on_global_3D
+
+    def parse(self, image_features, *args, **kwargs):
+        _check_keys_(input_features=image_features, keys=self.keys)
+        combine_images = [image_features[i] for i in self.keys]
+        shift_image = tf.concat(combine_images, axis=-1)
+        og_shape = self.og_shape
+        if self.random_translation_height:
+            if self.global_3D:
+                shift_image = tf.reshape(shift_image, [og_shape[0] * og_shape[1]] + [i for i in og_shape[2:]])
+            shift_image = self.random_translation_height(shift_image)
+            if self.global_3D:
+                shift_image = tf.reshape(shift_image, og_shape)
+        if self.random_translation_width:
+            if self.global_3D:
+                shift_image = tf.reshape(tf.transpose(shift_image, [0, 2, 1, 3]), [og_shape[0] * og_shape[1], og_shape[2]] + [i for i in og_shape[3:]])
+            shift_image = self.random_translation_width(shift_image)
+            if self.global_3D:
+                shift_image = tf.reshape(shift_image, og_shape)
+                shift_image = tf.transpose(shift_image, [0, 2, 1, 3])
+        if self.random_translation_vert and self.global_3D:
+            shift_image = tf.reshape(shift_image, [og_shape[0], og_shape[1] * og_shape[2]] + [i for i in og_shape[3:]])
+            shift_image = self.random_translation_vert(shift_image)
+            shift_image = tf.reshape(shift_image, og_shape)
+        shifted_image = shift_image
+        start_dim = 0
+        for key in self.keys:
+            dimension = image_features[key].shape[-1]
+            end_dim = start_dim + dimension
+            new_image = shifted_image[..., start_dim:end_dim]
+            start_dim += dimension
+            image_features[key] = new_image
         return image_features
 
 

@@ -610,7 +610,7 @@ class AddSpacing(ImageProcessor):
         return input_features
 
 
-class DilateNiftiiHandles(ImageProcessor):
+class DilateSitkImages:
     def __init__(self, kernel_radius: typing.Tuple[float, float, float], dilate_keys=('annotation_handle',),
                  kernel_type=sitk.sitkBall):
         """
@@ -639,6 +639,12 @@ class DilateNiftiiHandles(ImageProcessor):
             mask_handle = sitk.GetImageFromArray(out_array)
             input_features[key] = mask_handle
         return input_features
+
+
+class DilateNiftiiHandles(DilateSitkImages):
+    def __init__(self, kernel_radius: typing.Tuple[float, float, float], dilate_keys=('annotation_handle',),
+                 kernel_type=sitk.sitkBall):
+        super().__init__(kernel_radius, dilate_keys, kernel_type)
 
 
 class ResampleSITKHandlesToAnotherHandle(ImageProcessor):
@@ -729,7 +735,9 @@ class ResampleSITKHandles(ImageProcessor):
             assert type(image_handle) is sitk.Image, 'Pass a SimpleITK Image'
             input_spacing = image_handle.GetSpacing()
             output_spacing = []
-            output_size = []
+            output_size = None
+            if self.desired_output_size is not None:
+                output_size = []
             for index in range(3):
                 if self.desired_output_spacing[index] is None:
                     if (self.desired_output_size[index] is None or
@@ -740,10 +748,11 @@ class ResampleSITKHandles(ImageProcessor):
                         output_spacing.append(new_space)
                 else:
                     output_spacing.append(self.desired_output_spacing[index])
-                if self.desired_output_size is None or self.desired_output_size[index] is None:
-                    output_size.append(input_size[index])
-                else:
-                    output_size.append(self.desired_output_size[index])
+                if self.desired_output_size is not None:
+                    if self.desired_output_size[index] is None:
+                        output_size.append(input_size[index])
+                    else:
+                        output_size.append(self.desired_output_size[index])
             output_spacing = tuple(output_spacing)
             input_features['{}_original_spacing'.format(key)] = np.asarray(input_spacing, dtype='float32')
             input_features['{}_output_spacing'.format(key)] = np.asarray(output_spacing, dtype='float32')
@@ -2713,6 +2722,28 @@ def largest_component_2D_slice(binary_image):
     return processed_3D_image
 
 
+class MaintainOverlapBySlicesImages(ImageProcessor):
+    def __init__(self, changing_handles=('body_handle',), guiding_handle='mask_handle'):
+        self.changing_handles = changing_handles
+        self.guiding_handle = guiding_handle
+
+    def pre_process(self, input_features):
+        guiding_handle: sitk.Image
+        changing_handle: sitk.Image
+        _check_keys_(input_features, self.changing_handles + (self.guiding_handle,))
+        guiding_handle = input_features[self.guiding_handle]
+        guiding_array = sitk.GetArrayFromImage(guiding_handle)
+        has_numbers = np.sum(guiding_array, axis=(1, 2))
+        indexes = np.where(has_numbers == 0)[0]
+        if indexes.shape[0] > 0:
+            for changing_key in self.changing_handles:
+                changing_handle = input_features[changing_key]
+                for i in indexes:
+                    changing_handle[:, :, int(i)] = 0
+                input_features[changing_key] = changing_handle
+        return input_features
+
+
 class IdentifyBodyContour(ImageProcessor):
     """
     Code for converting a SITK image of a patient into a binary SITK image, only taking the largest
@@ -2768,7 +2799,7 @@ class ConvertBodyContourToCentroidLine(ImageProcessor):
         self.body_handle_key = body_handle_key
         self.out_key = out_key
         self.label_shape_filter = sitk.LabelShapeStatisticsImageFilter()
-        self.extent_evaluated=extent_evaluated
+        self.extent_evaluated = extent_evaluated
 
     def pre_process(self, input_features):
         _check_keys_(input_features=input_features, keys=(self.body_handle_key,))
