@@ -2290,7 +2290,7 @@ class MinimumVolumeandAreaPrediction(ImageProcessor):
     This should come after prediction thresholding
     '''
 
-    def __init__(self, min_volume=0.0, min_area=0.0, max_area=np.inf, pred_axis=[1], prediction_key='prediction',
+    def __init__(self, min_volume=0.0, min_area=0.0, max_area=np.inf, pred_axis=(1,), prediction_key='prediction',
                  dicom_handle_key='primary_handle'):
         '''
         :param min_volume: Minimum volume of structure allowed, in cm3
