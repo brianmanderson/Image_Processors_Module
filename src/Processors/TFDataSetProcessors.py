@@ -37,22 +37,33 @@ class Decoder(object):
 
 
 class DecodeImagesAnnotations(Decoder):
+    @tf.function
     def parse(self, image_features, *args, **kwargs):
+        parsed_features = {}
         all_keys = list(image_features.keys())
         is_modern = False
         for key in image_features.keys():
             if key.find('size') != -1:
                 continue
-            size_keys = [i for i in all_keys if i.find('size') != -1 and i.split('_size')[0] == key]  # All size keys
+
+            # Find size keys for the current key
+            size_keys = [i for i in all_keys if i.find('size') != -1 and i.split('_size')[0] == key]
             size_keys.sort(key=lambda x: x.split('_')[-1])
+
             if size_keys:
                 dtype = 'float'
                 if key in self.d_type_dict:
                     dtype = self.d_type_dict[key]
+
                 out_size = tuple([image_features[i] for i in size_keys])
-                image_features[key] = tf.reshape(tf.io.decode_raw(image_features[key], out_type=dtype),
-                                                 out_size)
+
+                # Add the decoded feature to the new dictionary
+                parsed_features[key] = tf.reshape(tf.io.decode_raw(image_features[key], out_type=dtype), out_size)
                 is_modern = True
+            else:
+                # If no size keys, copy the original feature
+                parsed_features[key] = image_features[key]
+
         if not is_modern:  # To retain backwards compatibility
             print('Please update to the latest versions of the TFRecord maker')
             image_dtype = 'float'
@@ -63,43 +74,43 @@ class DecodeImagesAnnotations(Decoder):
                 annotation_dtype = self.d_type_dict['annotation']
             if 'z_images' in image_features:
                 if 'image' in image_features:
-                    image_features['image'] = tf.reshape(tf.io.decode_raw(image_features['image'], out_type=image_dtype),
+                    parsed_features['image'] = value = tf.reshape(tf.io.decode_raw(image_features['image'], out_type=image_dtype),
                                                          (image_features['z_images'], image_features['rows'],
                                                           image_features['cols']))
                 if 'annotation' in image_features:
                     if 'num_classes' in image_features:
-                        image_features['annotation'] = tf.reshape(tf.io.decode_raw(image_features['annotation'],
+                        parsed_features['annotation'] = value = tf.reshape(tf.io.decode_raw(image_features['annotation'],
                                                                                    out_type=annotation_dtype),
                                                                   (image_features['z_images'], image_features['rows'],
                                                                    image_features['cols'], image_features['num_classes']))
                     else:
-                        image_features['annotation'] = tf.reshape(tf.io.decode_raw(image_features['annotation'],
+                        parsed_features['annotation'] = value = tf.reshape(tf.io.decode_raw(image_features['annotation'],
                                                                                    out_type=annotation_dtype),
                                                                   (image_features['z_images'], image_features['rows'],
                                                                    image_features['cols']))
             else:
-                image_features['image'] = tf.reshape(tf.io.decode_raw(image_features['image'], out_type=image_dtype),
+                parsed_features['image'] = tf.reshape(tf.io.decode_raw(image_features['image'], out_type=image_dtype),
                                                      (image_features['rows'], image_features['cols']))
                 if 'num_classes' in image_features:
-                    image_features['annotation'] = tf.reshape(tf.io.decode_raw(image_features['annotation'],
+                    parsed_features['annotation'] = tf.reshape(tf.io.decode_raw(image_features['annotation'],
                                                                                out_type=annotation_dtype),
                                                               (image_features['rows'], image_features['cols'],
                                                                image_features['num_classes']))
                 else:
-                    image_features['annotation'] = tf.reshape(tf.io.decode_raw(image_features['annotation'],
+                    parsed_features['annotation'] = tf.reshape(tf.io.decode_raw(image_features['annotation'],
                                                                                out_type=annotation_dtype),
                                                               (image_features['rows'], image_features['cols']))
             if 'spacing' in image_features:
                 spacing = tf.io.decode_raw(image_features['spacing'], out_type='float32')
-                image_features['spacing'] = spacing
+                parsed_features['spacing'] = spacing
             if 'dose' in image_features:
                 dose_dtype = 'float'
                 if 'dose' in self.d_type_dict:
                     dose_dtype = self.d_type_dict['dose']
-                image_features['dose'] = tf.reshape(tf.io.decode_raw(image_features['dose'], out_type=dose_dtype),
+                parsed_features['dose'] = tf.reshape(tf.io.decode_raw(image_features['dose'], out_type=dose_dtype),
                                                     (image_features['dose_images'], image_features['dose_rows'],
                                                      image_features['dose_cols']))
-        return image_features
+        return parsed_features
 
 
 class Decode_Images_Annotations(DecodeImagesAnnotations):
