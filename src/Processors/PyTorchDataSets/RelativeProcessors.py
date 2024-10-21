@@ -5,14 +5,7 @@ import sys
 import os.path
 sys.path.append(
     os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
-import tensorflow as tf
 import numpy as np
-from tensorflow.python.framework import tensor_shape
-from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import random_ops
-from tensorflow.python.framework import ops
 from PlotScrollNumpyArrays.Plot_Scroll_Images import plot_scroll_Image, plt
 
 
@@ -56,29 +49,23 @@ class MaskOneBasedOnOther(ImageProcessor):
         for guiding_key, changing_key, guiding_value, mask_value, method in zip(self.guiding_keys, self.changing_keys,
                                                                                 self.guiding_values, self.mask_values,
                                                                                 self.methods):
-            mask_value = tf.constant(mask_value, dtype=input_features[changing_key].dtype)
             if self.on_channel:
-                val = tf.constant(1, dtype=input_features[guiding_key].dtype)
+                val = 1
                 if method == 'equal_to':
-                    input_features[changing_key] = tf.where(input_features[guiding_key][..., guiding_value] == val,
-                                                            mask_value, input_features[changing_key])
+                    mask = input_features[guiding_key][..., guiding_value] == val
                 elif method == 'less_than':
-                    input_features[changing_key] = tf.where(input_features[guiding_key] < val,
-                                                            mask_value, input_features[changing_key])
+                    mask = input_features[guiding_key] < val
                 elif method == 'greater_than':
-                    input_features[changing_key] = tf.where(input_features[guiding_key] > val,
-                                                            mask_value, input_features[changing_key])
+                    mask = input_features[guiding_key] > val
             else:
-                guiding_value = tf.constant(guiding_value, dtype=input_features[guiding_key].dtype)
                 if method == 'equal_to':
-                    input_features[changing_key] = tf.where(input_features[guiding_key] == guiding_value,
-                                                            mask_value, input_features[changing_key])
+                    mask = input_features[guiding_key] == guiding_value
                 elif method == 'less_than':
-                    input_features[changing_key] = tf.where(input_features[guiding_key] < guiding_value,
-                                                            mask_value, input_features[changing_key])
+                    mask = input_features[guiding_key] < guiding_value
                 elif method == 'greater_than':
-                    input_features[changing_key] = tf.where(input_features[guiding_key] > guiding_value,
-                                                            mask_value, input_features[changing_key])
+                    mask = input_features[guiding_key] > guiding_value
+
+            input_features[changing_key] = np.where(mask, mask_value, input_features[changing_key])
         return input_features
 
 
@@ -91,12 +78,12 @@ class AddMetricBasedOnImage(ImageProcessor):
     def parse(self, input_features, *args, **kwargs):
         _check_keys_(input_features=input_features, keys=self.image_keys)
         for image_key, ref_method, out_key in zip(self.image_keys, self.methods, self.out_key_names):
+            value = 1
             if ref_method == 'reduce_max':
-                value = tf.reduce_max(input_features[image_key])
-                input_features[out_key] = value
+                value = np.max(input_features[image_key])
             elif ref_method == 'reduce_min':
-                value = tf.reduce_min(input_features[image_key])
-                input_features[out_key] = value
+                value = np.min(input_features[image_key])
+            input_features[out_key] = value
         return input_features
 
 
@@ -105,9 +92,9 @@ class NormalizeBasedOnOther(ImageProcessor):
                  changing_methods=('divide',)):
         self.guiding_keys, self.changing_keys = guiding_keys, changing_keys
         for method in reference_method:
-            assert method in ('reduce_max', 'reduce_min'), 'Only provide a method of argmax, or argmin'
+            assert method in ('reduce_max', 'reduce_min'), 'Only provide a method of reduce_max or reduce_min'
         for method in changing_methods:
-            assert method in ('divide', 'multiply'), 'Only provide a method of argmax, or argmin'
+            assert method in ('divide', 'multiply'), 'Only provide a method of divide or multiply'
         self.methods = reference_method
         self.changing_methods = changing_methods
 
@@ -116,18 +103,16 @@ class NormalizeBasedOnOther(ImageProcessor):
         _check_keys_(input_features=input_features, keys=self.changing_keys)
         for guiding_key, changing_key, ref_method, change_method in zip(self.guiding_keys, self.changing_keys,
                                                                         self.methods, self.changing_methods):
+            value = 1
             if ref_method == 'reduce_max':
-                value = tf.reduce_max(input_features[guiding_key])
-                if change_method == 'divide':
-                    input_features[changing_key] = tf.divide(input_features[changing_key], value)
-                elif change_method == 'multiply':
-                    input_features[changing_key] = tf.multiply(input_features[changing_key], value)
+                value = np.max(input_features[guiding_key])
             elif ref_method == 'reduce_min':
-                value = tf.reduce_min(input_features[guiding_key])
-                if change_method == 'divide':
-                    input_features[changing_key] = tf.divide(input_features[changing_key], value)
-                elif change_method == 'multiply':
-                    input_features[changing_key] = tf.multiply(input_features[changing_key], value)
+                value = np.min(input_features[guiding_key])
+
+            if change_method == 'divide':
+                input_features[changing_key] = input_features[changing_key] / value
+            elif change_method == 'multiply':
+                input_features[changing_key] = input_features[changing_key] * value
         return input_features
 
 

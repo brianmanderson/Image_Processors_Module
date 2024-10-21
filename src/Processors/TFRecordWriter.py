@@ -4,7 +4,11 @@ import sys
 import os.path
 sys.path.append(os.path.abspath(os.path.dirname(__file__)))
 from PlotScrollNumpyArrays.Plot_Scroll_Images import plot_scroll_Image, plt
-import tensorflow as tf
+try:
+    import tensorflow as tf
+except:
+    print("No tensorflow imported")
+import typing
 import pickle
 import os
 from collections import OrderedDict
@@ -175,6 +179,28 @@ class RecordWriter(object):
             filename = filename.replace('.tfrecord', '_{}.tfrecord'.format(example_key))
             if not os.path.exists(filename) or self.rewrite:
                 dictionary_to_tf_record(filename=filename, input_features=example)
+
+
+class PickleRecordWriter(object):
+    def __init__(self, out_path, file_name_key='file_name', rewrite=False,
+                 wanted_keys=('ct_array', 'mask_array', 'ct_file')):
+        self.file_name_key = file_name_key
+        self.out_path = out_path
+        self.rewrite = rewrite
+        if not os.path.exists(out_path):
+            os.makedirs(out_path)
+        self.wanted_keys = wanted_keys
+
+    def write_records(self, input_features):
+        for example_key in input_features.keys():
+            full_example = input_features[example_key]
+            _check_keys_(full_example, self.file_name_key)
+            _check_keys_(full_example, self.wanted_keys)
+            image_name = full_example[self.file_name_key]
+            image_name = f"{image_name.replace('.tfrecord', '')}_{example_key}.pkl"
+            filename = os.path.join(self.out_path, image_name)
+            example = {key: value for key, value in full_example.items() if key in self.wanted_keys}
+            save_obj(filename, example)
 
 
 class RecordWriterRecurrence(RecordWriter):
