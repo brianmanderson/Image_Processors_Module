@@ -2486,7 +2486,7 @@ class Box_Images(ImageProcessor):
     def __init__(self, image_keys=('image',), annotation_key='annotation', wanted_vals_for_bbox=None,
                  bounding_box_expansion=(5, 10, 10), power_val_z=1, power_val_r=1,
                  power_val_c=1, min_images=None, min_rows=None, min_cols=None,
-                 post_process_keys=('image', 'annotation', 'prediction'), pad_value=None, on_needles=False):
+                 post_process_keys=('image', 'annotation', 'prediction'), pad_values=None, on_needles=False):
         """
         :param image_keys: keys which corresponds to an image to be normalized
         :param annotation_key: key which corresponds to an annotation image used for normalization
@@ -2507,7 +2507,9 @@ class Box_Images(ImageProcessor):
         self.min_images, self.min_rows, self.min_cols = min_images, min_rows, min_cols
         self.image_keys, self.annotation_key = image_keys, annotation_key
         self.post_process_keys = post_process_keys
-        self.pad_value = pad_value
+        if pad_values is None:
+            pad_values = [None for _ in range(len(image_keys))]
+        self.pad_values = pad_values
         self.on_needles = on_needles
 
     def pre_process(self, input_features):
@@ -2566,7 +2568,7 @@ class Box_Images(ImageProcessor):
                                                                                    bounding_box_expansion=
                                                                                    remainders)
             input_features['z_r_c_start'] = [z_start, r_start, c_start]
-            for key in self.image_keys:
+            for key, pad_value in zip(self.image_keys, self.pad_values):
                 image = input_features[key]
                 input_features['og_shape'] = image.shape
                 input_features['og_shape_{}'.format(key)] = image.shape
@@ -2574,9 +2576,7 @@ class Box_Images(ImageProcessor):
                 img_shape = image_cube.shape
                 pads = [min_images - img_shape[0], min_rows - img_shape[1], min_cols - img_shape[2]]
                 pads = [[max([0, floor(i / 2)]), max([0, ceil(i / 2)])] for i in pads]
-                if self.pad_value is not None:
-                    pad_value = self.pad_value
-                else:
+                if pad_value is None:
                     pad_value = np.min(image_cube)
                 while len(image_cube.shape) > len(pads):
                     pads += [[0, 0]]
