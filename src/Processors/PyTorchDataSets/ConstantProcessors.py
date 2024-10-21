@@ -1,11 +1,11 @@
 __author__ = 'Brian M Anderson'
 # Created on 3/5/2021
-import copy
 import sys
 import os.path
 sys.path.append(
     os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
 import numpy as np
+import torch
 from PlotScrollNumpyArrays.Plot_Scroll_Images import plot_scroll_Image, plt
 
 
@@ -20,16 +20,16 @@ def _check_keys_(input_features, keys):
 
 
 class ImageProcessor(object):
-    def parse(self, *args, **kwargs):
+    def __call__(self, *args, **kwargs):
         return args, kwargs
 
 
-class RandomNoise(ImageProcessor):
+class RandomNoise:
     def __init__(self, max_noise=2.5, wanted_keys=('image',)):
         self.max_noise = max_noise
         self.wanted_keys = wanted_keys
 
-    def parse(self, image_features, *args, **kwargs):
+    def __call__(self, image_features, *args, **kwargs):
         _check_keys_(input_features=image_features, keys=self.wanted_keys)
         if self.max_noise == 0.0:
             return image_features
@@ -37,7 +37,7 @@ class RandomNoise(ImageProcessor):
         for key in self.wanted_keys:
             if key in image_features:
                 data = image_features[key]
-                noise = np.random.uniform(0.0, self.max_noise) * np.random.normal(0.0, 1.0, size=data.shape)
+                noise = torch.empty_like(data).uniform_(0.0, self.max_noise) * torch.randn_like(data)
                 parsed_features[key] = data + noise
         return parsed_features
 
@@ -51,31 +51,31 @@ class ResizeAndPad(ImageProcessor):
         self.resize_row_col = resize_row_col
         self.output_size = output_size
 
-    def parse(self, image_features, *args, **kwargs):
+    def __call__(self, image_features, *args, **kwargs):
         _check_keys_(input_features=image_features, keys=self.input_keys)
         parsed_features = {key: value for key, value in image_features.items()}
         for image_key, resize_row_col, output_key, output_size in zip(self.input_keys, self.resize_row_col,
                                                                       self.output_keys, self.output_size):
             x = image_features[image_key]
-            new_image = np.resize(x, (resize_row_col, resize_row_col))
+            new_image = torch.nn.functional.interpolate(x.unsqueeze(0), size=resize_row_col, mode='bilinear', align_corners=False).squeeze(0)
             pad_top = (output_size - resize_row_col) // 2
             pad_bottom = output_size - resize_row_col - pad_top
-            padded_image = np.pad(new_image, ((pad_top, pad_bottom), (pad_top, pad_bottom)), mode='constant')
+            padded_image = torch.nn.functional.pad(new_image, (pad_top, pad_bottom, pad_top, pad_bottom), mode='constant', value=0)
             parsed_features[output_key] = padded_image
         return parsed_features
 
 
-class CombineKeys(ImageProcessor):
+class CombineKeys:
     def __init__(self, image_keys=('primary_image', 'secondary_image'), output_key='combined', axis=-1):
         self.image_keys = image_keys
         self.output_key = output_key
         self.axis = axis
 
-    def parse(self, image_features, *args, **kwargs):
+    def __call__(self, image_features, *args, **kwargs):
         _check_keys_(input_features=image_features, keys=self.image_keys)
         parsed_features = {key: value for key, value in image_features.items()}
         combine_images = [image_features[i] for i in self.image_keys]
-        parsed_features[self.output_key] = np.concatenate(combine_images, axis=self.axis)
+        parsed_features[self.output_key] = torch.cat(combine_images, dim=self.axis)
         return parsed_features
 
 
@@ -88,7 +88,7 @@ class ReturnOutputs(ImageProcessor):
         self.output_keys = output_keys
         self.as_tuple = as_tuple
 
-    def parse(self, image_features, *args, **kwargs):
+    def __call__(self, image_features, *args, **kwargs):
         inputs = []
         outputs = []
         _check_keys_(input_features=image_features, keys=self.input_keys + self.output_keys)
@@ -107,14 +107,13 @@ class RandomCrop(ImageProcessor):
         self.keys_to_crop = keys_to_crop
         self.crop_dimensions = crop_dimensions
 
-    def parse(self, image_features, *args, **kwargs):
+    def __call__(self, image_features, *args, **kwargs):
         _check_keys_(image_features, keys=self.keys_to_crop)
         parsed_features = {key: value for key, value in image_features.items()}
-        image = [image_features[i] for i in self.keys_to_crop]
-        image = np.concatenate(image, axis=-1)
+        images = [image_features[i] for i in self.keys_to_crop]
+        image = torch.cat(images, dim=-1)
         crop_dimensions = self.crop_dimensions
-        start_indices = [np.random.randint(0, image.shape[i] - crop_dimensions[i] + 1) for i in
-                         range(len(crop_dimensions))]
+        start_indices = [torch.randint(0, image.shape[i] - crop_dimensions[i] + 1, (1,)).item() for i in range(len(crop_dimensions))]
         slices = tuple(slice(start, start + size) for start, size in zip(start_indices, crop_dimensions))
         cropped_image = image[slices]
         start_dim = 0
@@ -132,13 +131,12 @@ class ToCategorical(ImageProcessor):
         self.annotation_keys = annotation_keys
         self.number_of_classes = number_of_classes
 
-    def parse(self, image_features, *args, **kwargs):
+    def __call__(self, image_features, *args, **kwargs):
         _check_keys_(image_features, keys=self.annotation_keys)
         parsed_features = {key: value for key, value in image_features.items()}
         for key, num_classes in zip(self.annotation_keys, self.number_of_classes):
-            y = image_features[key]
-            y = np.squeeze(y)
-            one_hot = np.eye(num_classes)[y.astype(int)]
+            y = image_features[key].squeeze()
+            one_hot = torch.nn.functional.one_hot(y, num_classes=num_classes)
             parsed_features[key] = one_hot
         return parsed_features
 
@@ -151,11 +149,24 @@ class Squeeze(ImageProcessor):
         """
         self.image_keys = image_keys
 
-    def parse(self, image_features, *args, **kwargs):
+    def __call__(self, image_features, *args, **kwargs):
         _check_keys_(image_features, self.image_keys)
         parsed_features = {key: value for key, value in image_features.items()}
         for key in self.image_keys:
-            parsed_features[key] = np.squeeze(image_features[key])
+            x = image_features[key]
+            parsed_features[key] = x.squeeze()
+        return parsed_features
+
+
+class ToTensor(ImageProcessor):
+    def __init__(self, image_keys=('image', 'annotation')):
+        self.image_keys = image_keys
+
+    def __call__(self, image_features, *args, **kwargs):
+        _check_keys_(image_features, self.image_keys)
+        parsed_features = {key: value for key, value in image_features.items()}
+        for key in self.image_keys:
+            parsed_features[key] = torch.from_numpy(image_features[key])
         return parsed_features
 
 
@@ -164,11 +175,12 @@ class ExpandDimension(ImageProcessor):
         self.axis = axis
         self.image_keys = image_keys
 
-    def parse(self, image_features, *args, **kwargs):
+    def __call__(self, image_features, *args, **kwargs):
         _check_keys_(image_features, self.image_keys)
         parsed_features = {key: value for key, value in image_features.items()}
         for key in self.image_keys:
-            parsed_features[key] = np.expand_dims(image_features[key], axis=self.axis)
+            image = torch.tensor(image_features[key])
+            parsed_features[key] = image.unsqueeze(self.axis)
         return parsed_features
 
 
@@ -183,11 +195,12 @@ class RepeatChannel(ImageProcessor):
         self.repeats = repeats
         self.input_keys = input_keys
 
-    def parse(self, image_features, *args, **kwargs):
+    def __call__(self, image_features, *args, **kwargs):
         _check_keys_(input_features=image_features, keys=self.input_keys)
         parsed_features = {key: value for key, value in image_features.items()}
         for key in self.input_keys:
-            parsed_features[key] = np.repeat(image_features[key], axis=self.axis, repeats=self.repeats)
+            image = torch.tensor(image_features[key])
+            parsed_features[key] = image.repeat_interleave(self.repeats, dim=self.axis)
         return parsed_features
 
 
@@ -196,31 +209,31 @@ class TakeAxis(ImageProcessor):
         self.keys = keys
         self.wanted_axis = wanted_axis
 
-    def parse(self, image_features, *args, **kwargs):
+    def __call__(self, image_features, *args, **kwargs):
         _check_keys_(image_features, self.keys)
         parsed_features = {key: value for key, value in image_features.items()}
         for key, axis in zip(self.keys, self.wanted_axis):
             image = image_features[key]
-            parsed_features[key] = image[..., axis]
+            parsed_features[key] = image.select(-1, axis)
         return parsed_features
 
 
 class FlipImages(ImageProcessor):
     def __init__(self, keys=('image', 'mask'), flip_up_down=False,
-                 flip_left_right=False):
+                 flip_left_right=False, global3D=True):
         self.flip_up_down = flip_up_down
         self.flip_left_right = flip_left_right
         self.keys = keys
 
-    def parse(self, image_features, *args, **kwargs):
+    def __call__(self, image_features, *args, **kwargs):
         _check_keys_(input_features=image_features, keys=self.keys)
         parsed_features = {key: value for key, value in image_features.items()}
         combine_images = [image_features[i] for i in self.keys]
-        flip_image = np.concatenate(combine_images, axis=-1)
-        if self.flip_up_down and np.random.rand() > 0.5:
-            flip_image = np.flip(flip_image, axis=1)  # Flip up-down
-        if self.flip_left_right and np.random.rand() > 0.5:
-            flip_image = np.flip(flip_image, axis=2)  # Flip left-right
+        flip_image = torch.cat(combine_images, dim=-1)
+        if self.flip_up_down and torch.rand(1).item() > 0.5:
+            flip_image = torch.flip(flip_image, dims=[1])  # Flip up-down
+        if self.flip_left_right and torch.rand(1).item() > 0.5:
+            flip_image = torch.flip(flip_image, dims=[2])  # Flip left-right
         flipped_image = flip_image
         start_dim = 0
         for key in self.keys:
@@ -246,7 +259,7 @@ class ShiftImages(ImageProcessor):
         self.keys = keys
         self.global_3D = on_global_3D
 
-    def parse(self, image_features, *args, **kwargs):
+    def __call__(self, image_features, *args, **kwargs):
         _check_keys_(input_features=image_features, keys=self.keys)
         parsed_features = {key: value for key, value in image_features.items()}
         combine_images = [image_features[i] for i in self.keys]
@@ -288,11 +301,11 @@ class MultiplyImagesByConstant(ImageProcessor):
         self.keys = keys
         self.values = values
 
-    def parse(self, image_features, *args, **kwargs):
+    def __call__(self, image_features, *args, **kwargs):
         _check_keys_(input_features=image_features, keys=self.keys)
         parsed_features = {key: value for key, value in image_features.items()}
         for key, value in zip(self.keys, self.values):
-            parsed_features[key] = np.multiply(image_features[key], value)
+            parsed_features[key] = image_features[key] * value
         return parsed_features
 
 
@@ -300,11 +313,11 @@ class TakeExpOfKey(ImageProcessor):
     def __init__(self, input_keys=('pdos_array',)):
         self.input_keys = input_keys
 
-    def parse(self, image_features, *args, **kwargs):
+    def __call__(self, image_features, *args, **kwargs):
         _check_keys_(input_features=image_features, keys=self.input_keys)
         parsed_features = {key: value for key, value in image_features.items()}
         for input_key in self.input_keys:
-            parsed_features[input_key] = np.exp(image_features[input_key])
+            parsed_features[input_key] = torch.exp(image_features[input_key])
         return parsed_features
 
 
@@ -313,7 +326,7 @@ class CreateNewKey(ImageProcessor):
         self.input_keys = input_keys
         self.output_keys = output_keys
 
-    def parse(self, image_features, *args, **kwargs):
+    def __call__(self, image_features, *args, **kwargs):
         _check_keys_(input_features=image_features, keys=self.input_keys)
         parsed_features = {key: value for key, value in image_features.items()}
         for input_key, output_key in zip(self.input_keys, self.output_keys):
@@ -329,10 +342,10 @@ class AddImagesTogether(ImageProcessor):
         self.keys = keys
         self.out_key = out_key
 
-    def parse(self, image_features, *args, **kwargs):
+    def __call__(self, image_features, *args, **kwargs):
         _check_keys_(input_features=image_features, keys=self.keys)
         parsed_features = {key: value for key, value in image_features.items()}
-        combined_image = np.sum([image_features[key] for key in self.keys], axis=0)
+        combined_image = torch.sum(torch.stack([image_features[key] for key in self.keys]), dim=0)
         parsed_features[self.out_key] = combined_image
         return parsed_features
 
@@ -345,10 +358,10 @@ class MultiplyImagesTogether(ImageProcessor):
         self.keys = keys
         self.out_key = out_key
 
-    def parse(self, image_features, *args, **kwargs):
+    def __call__(self, image_features, *args, **kwargs):
         _check_keys_(input_features=image_features, keys=self.keys)
         parsed_features = {key: value for key, value in image_features.items()}
-        combined_image = np.prod([image_features[key] for key in self.keys], axis=0)
+        combined_image = torch.prod(torch.stack([image_features[key] for key in self.keys]), dim=0)
         parsed_features[self.out_key] = combined_image
         return parsed_features
 
@@ -362,7 +375,7 @@ class AddConstant(ImageProcessor):
         self.keys = keys
         self.values = values
 
-    def parse(self, image_features, *args, **kwargs):
+    def __call__(self, image_features, *args, **kwargs):
         _check_keys_(input_features=image_features, keys=self.keys)
         parsed_features = {key: value for key, value in image_features.items()}
         for key, value in zip(self.keys, self.values):
@@ -381,7 +394,7 @@ class NormalizeImages(ImageProcessor):
         self.mean_values = mean_values
         self.std_values = std_values
 
-    def parse(self, image_features, *args, **kwargs):
+    def __call__(self, image_features, *args, **kwargs):
         _check_keys_(image_features, self.keys)
         parsed_features = {key: value for key, value in image_features.items()}
         for key, mean_val, std_val in zip(self.keys, self.mean_values, self.std_values):
@@ -398,11 +411,11 @@ class ArgMax(ImageProcessor):
         self.axis = axis
         self.annotation_keys = annotation_keys
 
-    def parse(self, image_features, *args, **kwargs):
+    def __call__(self, image_features, *args, **kwargs):
         _check_keys_(image_features, self.annotation_keys)
         parsed_features = {key: value for key, value in image_features.items()}
         for key in self.annotation_keys:
-            parsed_features[key] = np.argmax(image_features[key], axis=self.axis)
+            parsed_features[key] = torch.argmax(image_features[key], dim=self.axis)
         return parsed_features
 
 
@@ -417,7 +430,7 @@ class ReturnSingleChannel(ImageProcessor):
         self.channels = channels
         self.out_keys = out_keys
 
-    def parse(self, image_features, *args, **kwargs):
+    def __call__(self, image_features, *args, **kwargs):
         _check_keys_(input_features=image_features, keys=self.image_keys)
         parsed_features = {key: value for key, value in image_features.items()}
         for key, channel, new_key in zip(self.image_keys, self.channels, self.out_keys):
@@ -434,14 +447,31 @@ class CreateNewKeyFromArgSum(ImageProcessor):
         self.guiding_keys = guiding_keys
         self.new_keys = new_keys
 
-    def parse(self, image_features, *args, **kwargs):
+    def __call__(self, image_features, *args, **kwargs):
         _check_keys_(input_features=image_features, keys=self.guiding_keys)
         parsed_features = {key: value for key, value in image_features.items()}
         for guiding_key, new_key in zip(self.guiding_keys, self.new_keys):
             annotation = image_features[guiding_key]
-            mask = np.expand_dims(np.sum(annotation[..., 1:], axis=-1), axis=-1)
+            mask = torch.sum(annotation[..., 1:], dim=-1, keepdim=True)
             parsed_features[new_key] = mask
         return parsed_features
+
+
+def get_torch_dtype(dtype_string):
+    if dtype_string == 'float32':
+        return torch.float32
+    elif dtype_string == 'float':
+        return torch.float
+    elif dtype_string == 'int':
+        return torch.int
+    elif dtype_string == 'int64':
+        return torch.int64
+    elif dtype_string == 'int32':
+        return torch.int32
+    elif dtype_string == 'bool':
+        return torch.bool
+    else:
+        raise ValueError(f"Unsupported dtype string: {dtype_string}")
 
 
 class CastData(ImageProcessor):
@@ -453,16 +483,17 @@ class CastData(ImageProcessor):
         self.keys = keys
         self.dtypes = dtypes
 
-    def parse(self, image_features, *args, **kwargs):
+    def __call__(self, image_features, *args, **kwargs):
         _check_keys_(input_features=image_features, keys=self.keys)
         parsed_features = {key: value for key, value in image_features.items()}
-        for key, dtype in zip(self.keys, self.dtypes):
-            parsed_features[key] = image_features[key].astype(dtype)
+        for key, dtype_string in zip(self.keys, self.dtypes):
+            dtype = get_torch_dtype(dtype_string)
+            parsed_features[key] = image_features[key].to(dtype)
         return parsed_features
 
 
 class ThresholdImages(ImageProcessor):
-    def __init__(self, keys=('image',), lower_bounds=(-np.inf,), upper_bounds=(np.inf,), divides=(True,)):
+    def __init__(self, keys=('image',), lower_bounds=(-float('inf'),), upper_bounds=(float('inf'),), divides=(True,)):
         """
         :param keys: tuple of image keys
         :param lower_bounds: tuple of bounds
@@ -474,11 +505,11 @@ class ThresholdImages(ImageProcessor):
         self.keys = keys
         self.divides = divides
 
-    def parse(self, image_features, *args, **kwargs):
+    def __call__(self, image_features, *args, **kwargs):
         _check_keys_(image_features, self.keys)
         parsed_features = {key: value for key, value in image_features.items()}
         for key, lower_bound, upper_bound, divide in zip(self.keys, self.lower_bounds, self.upper_bounds, self.divides):
-            parsed_features[key] = np.clip(image_features[key], lower_bound, upper_bound)
+            parsed_features[key] = torch.clamp(image_features[key], min=lower_bound, max=upper_bound)
             if divide:
                 parsed_features[key] = parsed_features[key] / (upper_bound - lower_bound)
         return parsed_features
@@ -491,15 +522,18 @@ class PadImages(ImageProcessor):
         self.pad_top = pad_top
         self.out_size = out_size
 
-    def parse(self, image_features, *args, **kwargs):
+    def __call__(self, image_features, *args, **kwargs):
         _check_keys_(image_features, self.keys)
         parsed_features = {key: value for key, value in image_features.items()}
         for key, pad_left, pad_top, out_size in zip(self.keys, self.pad_left, self.pad_top, self.out_size):
             image = image_features[key]
-            pad_width = ((pad_top, out_size - image.shape[0] - pad_top), (pad_left, out_size - image.shape[1] - pad_left))
+            padding = [
+                (pad_top, out_size - image.shape[-2] - pad_top),
+                (pad_left, out_size - image.shape[-1] - pad_left)
+            ]
             if image.ndim == 3:
-                pad_width += ((0, 0),)
-            new_image = np.pad(image, pad_width, mode='constant', constant_values=0)
+                padding = [(0, 0)] + padding
+            new_image = torch.nn.functional.pad(image, pad=[p for pad_pair in reversed(padding) for p in pad_pair], mode='constant', value=0)
             parsed_features[key] = new_image
         return parsed_features
 
@@ -520,7 +554,7 @@ class ResizeWithCropPad(ImageProcessor):
         self.image_cols = image_cols
         self.out_keys = out_keys
 
-    def parse(self, image_features, *args, **kwargs):
+    def __call__(self, image_features, *args, **kwargs):
         _check_keys_(input_features=image_features, keys=self.keys)
         parsed_features = {key: value for key, value in image_features.items()}
         for key, image_rows, image_cols, is_mask, out_key in zip(self.keys, self.image_rows, self.image_cols,
