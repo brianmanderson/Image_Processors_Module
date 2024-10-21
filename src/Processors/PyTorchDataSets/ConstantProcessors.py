@@ -87,7 +87,8 @@ class KeepOnlyKeys(ImageProcessor):
 
     def __call__(self, image_features, *args, **kwargs):
         _check_keys_(input_features=image_features, keys=self.keys_to_keep)
-        for key in image_features.key():
+        keys = list(image_features.keys())
+        for key in keys:
             if key not in self.keys_to_keep:
                 del image_features[key]
         return image_features
