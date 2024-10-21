@@ -206,34 +206,21 @@ class TakeAxis(ImageProcessor):
 
 
 class FlipImages(ImageProcessor):
-    def __init__(self, keys=('image', 'mask'), seed=None,
-                 flip_up_down=False, flip_left_right=False, on_global_3D=True, image_shape=(32, 320, 320, 3)):
-        self.og_shape = image_shape
+    def __init__(self, keys=('image', 'mask'), flip_up_down=False,
+                 flip_left_right=False):
         self.flip_up_down = flip_up_down
         self.flip_left_right = flip_left_right
         self.keys = keys
-        self.global_3D = on_global_3D
 
     def parse(self, image_features, *args, **kwargs):
         _check_keys_(input_features=image_features, keys=self.keys)
         parsed_features = {key: value for key, value in image_features.items()}
         combine_images = [image_features[i] for i in self.keys]
         flip_image = np.concatenate(combine_images, axis=-1)
-        og_shape = self.og_shape
-        if self.flip_up_down:
-            if self.global_3D:
-                flip_image = np.reshape(flip_image, [og_shape[0] * og_shape[1]] + list(og_shape[2:]))
+        if self.flip_up_down and np.random.rand() > 0.5:
             flip_image = np.flip(flip_image, axis=1)  # Flip up-down
-            if self.global_3D:
-                flip_image = np.reshape(flip_image, og_shape)
-        if self.flip_left_right:
-            if self.global_3D:
-                flip_image = np.reshape(np.transpose(flip_image, [0, 2, 1, 3]),
-                                        [og_shape[0] * og_shape[1], og_shape[2]] + list(og_shape[3:]))
+        if self.flip_left_right and np.random.rand() > 0.5:
             flip_image = np.flip(flip_image, axis=2)  # Flip left-right
-            if self.global_3D:
-                flip_image = np.reshape(flip_image, og_shape)
-                flip_image = np.transpose(flip_image, [0, 2, 1, 3])
         flipped_image = flip_image
         start_dim = 0
         for key in self.keys:
