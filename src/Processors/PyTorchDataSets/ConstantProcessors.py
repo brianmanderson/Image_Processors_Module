@@ -103,21 +103,27 @@ class ReturnOutputs(ImageProcessor):
 
 
 class RandomCrop(ImageProcessor):
-    def __init__(self, keys_to_crop=('image_array', 'annotation_array'), crop_dimensions=((32, 32, 32, 1),
-                                                                                          (32, 32, 32, 2))):
+    def __init__(self, keys_to_crop=('image_array', 'annotation_array'), crop_dimensions=(32, 32, 32, 1)):
         self.keys_to_crop = keys_to_crop
         self.crop_dimensions = crop_dimensions
 
     def parse(self, image_features, *args, **kwargs):
         _check_keys_(image_features, keys=self.keys_to_crop)
         parsed_features = {key: value for key, value in image_features.items()}
-        for key, crop_dimensions in zip(self.keys_to_crop, self.crop_dimensions):
-            image = image_features[key]
-            start_indices = [np.random.randint(0, image.shape[i] - crop_dimensions[i] + 1) for i in
-                             range(len(crop_dimensions))]
-            slices = tuple(slice(start, start + size) for start, size in zip(start_indices, crop_dimensions))
-            cropped_image = image[slices]
-            parsed_features[key] = cropped_image
+        image = [image_features[i] for i in self.keys_to_crop]
+        image = np.concatenate(image, axis=-1)
+        crop_dimensions = self.crop_dimensions
+        start_indices = [np.random.randint(0, image.shape[i] - crop_dimensions[i] + 1) for i in
+                         range(len(crop_dimensions))]
+        slices = tuple(slice(start, start + size) for start, size in zip(start_indices, crop_dimensions))
+        cropped_image = image[slices]
+        start_dim = 0
+        for key in self.keys_to_crop:
+            dimension = image_features[key].shape[-1]
+            end_dim = start_dim + dimension
+            new_image = cropped_image[..., start_dim:end_dim]
+            start_dim += dimension
+            parsed_features[key] = new_image
         return parsed_features
 
 
