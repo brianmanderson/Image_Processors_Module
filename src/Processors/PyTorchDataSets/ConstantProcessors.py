@@ -483,6 +483,22 @@ def get_torch_dtype(dtype_string):
         raise ValueError(f"Unsupported dtype string: {dtype_string}")
 
 
+class PermuteAxis(ImageProcessor):
+    def __init__(self, keys=('image', 'annotation',), axis=(3, 0, 1, 2)):
+        """
+        :param keys: tuple of keys
+        :param dtypes: tuple of datatypes
+        """
+        self.keys = keys
+        self.axis = axis
+
+    def __call__(self, image_features, *args, **kwargs):
+        _check_keys_(input_features=image_features, keys=self.keys)
+        for key in self.keys:
+            image_features[key] = image_features[key].permute(self.axis)
+        return image_features
+
+
 class CastData(ImageProcessor):
     def __init__(self, keys=('image', 'annotation',), dtypes=('float16', 'float16')):
         """
