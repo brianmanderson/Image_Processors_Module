@@ -150,7 +150,6 @@ class ToCategorical(ImageProcessor):
         _check_keys_(image_features, keys=self.annotation_keys)
         for key, num_classes in zip(self.annotation_keys, self.number_of_classes):
             y = image_features[key].squeeze()
-            print(image_features['ct_file'])
             one_hot = torch.nn.functional.one_hot(y, num_classes=num_classes)
             image_features[key] = one_hot
         return image_features
