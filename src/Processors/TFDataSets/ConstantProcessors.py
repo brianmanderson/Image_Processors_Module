@@ -267,23 +267,6 @@ class Return_Outputs(ImageProcessor):
         return tuple(inputs), tuple(outputs)
 
 
-class RandomCrop(ImageProcessor):
-    def __init__(self, keys_to_crop=('image_array', 'annotation_array'), crop_dimensions=((32, 32, 32, 1),
-                                                                                          (32, 32, 32, 2))):
-        self.keys_to_crop = keys_to_crop
-        self.crop_dimensions = crop_dimensions
-
-    def parse(self, image_features, *args, **kwargs):
-        _check_keys_(image_features, keys=self.keys_to_crop)
-        parsed_features = {key: value for key, value in image_features.items()}
-        seed = tf.random.uniform(shape=[2], maxval=99999, dtype=tf.dtypes.int32)
-        for key, crop_dimensions in zip(self.keys_to_crop, self.crop_dimensions):
-            image = image_features[key]
-            image = tf.image.stateless_random_crop(value=image, size=crop_dimensions, seed=seed)
-            parsed_features[key] = image
-        return parsed_features
-
-
 class ToCategorical(ImageProcessor):
     def __init__(self, annotation_keys=('annotation',), number_of_classes=(2,)):
         self.annotation_keys = annotation_keys
@@ -404,6 +387,44 @@ class FlipImages(ImageProcessor):
             dimension = image_features[key].shape[-1]
             end_dim = start_dim + dimension
             new_image = flipped_image[..., start_dim:end_dim]
+            start_dim += dimension
+            parsed_features[key] = new_image
+        return parsed_features
+
+
+class RandomCrop(ImageProcessor):
+    def __init__(self, keys_to_crop=('image_array', 'annotation_array'), crop_dimensions=(32, 32, 32, 1)):
+        self.keys_to_crop = keys_to_crop
+        self.crop_dimensions = crop_dimensions
+
+    def parse(self, image_features, *args, **kwargs):
+        # Ensure all required keys are in the dictionary
+        _check_keys_(image_features, keys=self.keys_to_crop)
+        parsed_features = {key: value for key, value in image_features.items()}
+
+        # Stack the features along the channel dimension
+        images = [image_features[i] for i in self.keys_to_crop]
+        image = tf.concat(images, axis=-1)
+
+        # Determine random start indices for cropping
+        crop_dimensions = self.crop_dimensions
+        start_indices = []
+        for i in range(len(crop_dimensions)):
+            max_start = image.shape[i] - crop_dimensions[i]
+            if max_start > 0:
+                start_index = tf.random.uniform([], 0, max_start, dtype=tf.int32)
+            else:
+                start_index = 0
+            start_indices.append(start_index)
+        slices = [slice(start, start + size) for start, size in zip(start_indices, crop_dimensions)]
+        cropped_image = image[slices]
+
+        # Assign the cropped image parts to the respective keys
+        start_dim = 0
+        for key in self.keys_to_crop:
+            dimension = image_features[key].shape[-1]
+            end_dim = start_dim + dimension
+            new_image = cropped_image[..., start_dim:end_dim]
             start_dim += dimension
             parsed_features[key] = new_image
         return parsed_features
