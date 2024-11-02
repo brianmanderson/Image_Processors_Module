@@ -111,30 +111,46 @@ class Decode_Images_Annotations(DecodeImagesAnnotations):
 
 
 class RandomNoise(ImageProcessor):
-    def __init__(self, max_noise=2.5, wanted_keys=('image',)):
+    def __init__(self, max_noise=2.5, wanted_keys=('image',), indexes=(0,), tuple_length=2,
+                 image_input_size=(5, 64, 256, 256, 1)):
         '''
         Return the image feature with an additive noise randomly weighted between [0.0, max_noise)
         :param max_noise: maximum magnitude of the noise in HU (apply before normalization)
         '''
         self.max_noise = max_noise
         self.wanted_keys = wanted_keys
+        self.indexes = indexes
+        self.tuple_length = tuple_length
+        self.image_input_size = image_input_size
 
     def parse(self, image_features, *args, **kwargs):
-        _check_keys_(input_features=image_features, keys=self.wanted_keys)
-        if self.max_noise == 0.0:
-            return image_features
-        parsed_features = {key: value for key, value in image_features.items()}
-        for key in self.wanted_keys:
-            if key in image_features:
-                data = image_features[key]
-                dtype = data.dtype
-                data = tf.cast(data, 'float32')
-                data += tf.random.uniform(shape=[], minval=0.0, maxval=self.max_noise,
-                                          dtype='float32') * tf.random.normal(tf.shape(image_features[key]),
-                                                                              mean=0.0, stddev=1.0, dtype='float32')
-                data = tf.cast(data, dtype)
-                parsed_features[key] = data
-        return parsed_features
+        if isinstance(image_features, dict):
+            _check_keys_(input_features=image_features, keys=self.wanted_keys)
+            if self.max_noise == 0.0:
+                return image_features
+            parsed_features = {key: value for key, value in image_features.items()}
+            for key in self.wanted_keys:
+                if key in image_features:
+                    data = image_features[key]
+                    dtype = data.dtype
+                    data = tf.cast(data, 'float32')
+                    data += tf.random.uniform(shape=[], minval=0.0, maxval=self.max_noise,
+                                            dtype='float32') * tf.random.normal(tf.shape(image_features[key]),
+                                                                                mean=0.0, stddev=1.0, dtype='float32')
+                    data = tf.cast(data, dtype)
+                    parsed_features[key] = data
+            return parsed_features
+        else:
+            noisy_outputs = tuple(tf.cast(image_features[i], 'float32') +
+                                  tf.random.uniform(shape=[],
+                                                    minval=0.0, maxval=self.max_noise,
+                                                    dtype='float32') *
+                                                    tf.random.normal(tf.shape(image_features[i]),
+                                                                     mean=0.0, stddev=1.0, dtype='float32')
+                if i in self.indexes else image_features[i]
+                for i in range(self.tuple_length)
+            )
+            return noisy_outputs
 
 
 class ResizeAndPad(ImageProcessor):
@@ -268,33 +284,53 @@ class Return_Outputs(ImageProcessor):
 
 
 class ToCategorical(ImageProcessor):
-    def __init__(self, annotation_keys=('annotation',), number_of_classes=(2,)):
+    def __init__(self, annotation_keys=('annotation',), number_of_classes=(2,), indexes=(2,),
+                 tuple_length=2):
         self.annotation_keys = annotation_keys
         self.number_of_classes = number_of_classes
+        self.indexes = indexes
+        self.tuple_length = tuple_length
 
     def parse(self, image_features, *args, **kwargs):
-        _check_keys_(image_features, keys=self.annotation_keys)
-        parsed_features = {key: value for key, value in image_features.items()}
-        for key, num_classes in zip(self.annotation_keys, self.number_of_classes):
-            y = image_features[key]
-            y = tf.squeeze(y)
-            parsed_features[key] = tf.cast(tf.one_hot(tf.cast(y, tf.int32), num_classes), dtype=y.dtype)
-        return parsed_features
+        if isinstance(image_features, dict):
+            _check_keys_(image_features, keys=self.annotation_keys)
+            parsed_features = {key: value for key, value in image_features.items()}
+            for key, num_classes in zip(self.annotation_keys, self.number_of_classes):
+                y = image_features[key]
+                y = tf.squeeze(y)
+                parsed_features[key] = tf.cast(tf.one_hot(tf.cast(y, tf.int32), num_classes), dtype=y.dtype)
+            return parsed_features
+        else:
+            outputs = tuple(tf.cast(tf.one_hot(tf.cast(image_features[i], tf.int32), self.number_of_classes[self.indexes.index(i)]), 'int32')
+                            if i in self.indexes else image_features[i]
+                            for i in range(self.tuple_length)
+                            )
+            return outputs
 
 
 class Squeeze(ImageProcessor):
-    def __init__(self, image_keys=('image',)):
+    def __init__(self, image_keys=('image',), indexes=(1,), tuple_length=2):
         """
         Designed to squeeze tf arrays
         :param image_keys:
         """
         self.image_keys = image_keys
+        self.indexes = indexes
+        self.tuple_length = tuple_length
+
     def parse(self, image_features, *args, **kwargs):
-        _check_keys_(image_features, self.image_keys)
-        parsed_features = {key: value for key, value in image_features.items()}
-        for key in self.image_keys:
-            parsed_features[key] = tf.squeeze(image_features[key])
-        return parsed_features
+        if isinstance(image_features, dict):
+            _check_keys_(image_features, self.image_keys)
+            parsed_features = {key: value for key, value in image_features.items()}
+            for key in self.image_keys:
+                parsed_features[key] = tf.squeeze(image_features[key])
+            return parsed_features
+        else:
+            outputs = tuple(tf.squeeze(image_features[i])
+                if i in self.indexes else image_features[i]
+                for i in range(self.tuple_length)
+                )
+            return outputs
 
 
 class ExpandDimension(ImageProcessor):
@@ -387,6 +423,7 @@ class FlipImages(ImageProcessor):
             dimension = image_features[key].shape[-1]
             end_dim = start_dim + dimension
             new_image = flipped_image[..., start_dim:end_dim]
+            new_image.set_shape(self.og_shape[:-1] + (end_dim - start_dim,))
             start_dim += dimension
             parsed_features[key] = new_image
         return parsed_features
@@ -425,6 +462,7 @@ class RandomCrop(ImageProcessor):
             dimension = image_features[key].shape[-1]
             end_dim = start_dim + dimension
             new_image = cropped_image[..., start_dim:end_dim]
+            new_image.set_shape(self.crop_dimensions[:-1] + (end_dim - start_dim,))
             start_dim += dimension
             parsed_features[key] = new_image
         return parsed_features
@@ -545,20 +583,31 @@ class ShiftImages(ImageProcessor):
 
 
 class MultiplyImagesByConstant(ImageProcessor):
-    def __init__(self, keys=('image',), values=(1,)):
+    def __init__(self, keys=('image',), values=(1,), indexes=(0,), tuple_length=2):
         """
         :param keys: tuple of keys for addition
         :param values: tuple of values for addition
         """
         self.keys = keys
         self.values = values
+        self.indexes = indexes
+        self.tuple_length = tuple_length
 
     def parse(self, image_features, *args, **kwargs):
-        _check_keys_(input_features=image_features, keys=self.keys)
-        parsed_features = {key: value for key, value in image_features.items()}
-        for key, value in zip(self.keys, self.values):
-            parsed_features[key] = tf.multiply(image_features[key], tf.cast(value, image_features[key].dtype))
-        return parsed_features
+        if isinstance(image_features, dict):
+            _check_keys_(input_features=image_features, keys=self.keys)
+            parsed_features = {key: value for key, value in image_features.items()}
+            for key, value in zip(self.keys, self.values):
+                parsed_features[key] = tf.multiply(image_features[key], tf.cast(value, image_features[key].dtype))
+            return parsed_features
+        else:
+            values = self.values
+            indexes = self.indexes
+            outputs = tuple(tf.multiply(image_features[i], tf.cast(values[indexes.index(i)], image_features[i].dtype))
+                            if i in indexes else image_features[i]
+                            for i in range(self.tuple_length)
+                            )
+            return outputs
 
 
 class TakeExpOfKey(ImageProcessor):
@@ -617,21 +666,34 @@ class MultiplyImagesTogether(ImageProcessor):
 
 
 class Add_Constant(ImageProcessor):
-    def __init__(self, keys=('image',), values=(0,)):
+    def __init__(self, keys=('image',), values=(0,), indexes=(0,), tuple_lenth=2):
         """
         :param keys: tuple of keys for addition
         :param values: tuple of values for addition
         """
         self.keys = keys
         self.values = values
+        self.indexes = indexes
+        self.tuple_length = tuple_lenth
 
     def parse(self, image_features, *args, **kwargs):
-        _check_keys_(input_features=image_features, keys=self.keys)
-        parsed_features = {key: value for key, value in image_features.items()}
-        for key, value in zip(self.keys, self.values):
-            parsed_features[key] = tf.add(image_features[key], tf.cast(value, image_features[key].dtype))
-        return parsed_features
-
+        if isinstance(image_features, dict):
+            _check_keys_(input_features=image_features, keys=self.keys)
+            parsed_features = {key: value for key, value in image_features.items()}
+            for key, value in zip(self.keys, self.values):
+                parsed_features[key] = tf.add(image_features[key], tf.cast(value, image_features[key].dtype))
+            return parsed_features
+        else:
+            outputs = []
+            for i in range(self.tuple_length):
+                if i in self.indexes:
+                    # Add the value to the tensor, preserving the batch dimension
+                    value_to_add = tf.cast(self.values[self.indexes.index(i)], image_features[i].dtype)
+                    new_tensor = tf.add(image_features[i], value_to_add)
+                    outputs.append(new_tensor)
+                else:
+                    outputs.append(image_features[i])
+            return tuple(outputs)
 
 class AddConstantToImages(Add_Constant):
     def __init__(self, keys=('image',), values=(0,)):
@@ -782,20 +844,30 @@ class CreateNewKeyFromArgSum(ImageProcessor):
 
 
 class Cast_Data(ImageProcessor):
-    def __init__(self, keys=('image', 'annotation',), dtypes=('float16', 'float16')):
+    def __init__(self, keys=('image', 'annotation',), dtypes=('float16', 'float16'),
+                 indexes=(1,), tuple_length=2):
         """
         :param keys: tuple of keys
         :param dtypes: tuple of datatypes
         """
         self.keys = keys
         self.dtypes = dtypes
+        self.indexes = indexes
+        self.tuple_length = tuple_length
 
     def parse(self, image_features, *args, **kwargs):
-        _check_keys_(input_features=image_features, keys=self.keys)
-        parsed_features = {key: value for key, value in image_features.items()}
-        for key, dtype in zip(self.keys, self.dtypes):
-            parsed_features[key] = tf.cast(image_features[key], dtype=dtype)
-        return parsed_features
+        if isinstance(image_features, dict):
+            _check_keys_(input_features=image_features, keys=self.keys)
+            parsed_features = {key: value for key, value in image_features.items()}
+            for key, dtype in zip(self.keys, self.dtypes):
+                parsed_features[key] = tf.cast(image_features[key], dtype=dtype)
+            return parsed_features
+        else:
+            outputs = tuple(tf.cast(image_features[i], self.dtypes[self.indexes.index(i)])
+                            if i in self.indexes else image_features[i]
+                            for i in range(self.tuple_length)
+                            )
+            return outputs
 
 
 def fix_image_flip_shape(image, result):
@@ -817,7 +889,8 @@ def fix_image_flip_shape(image, result):
 
 
 class Threshold_Images(ImageProcessor):
-    def __init__(self, keys=('image',), lower_bounds=(-np.inf,), upper_bounds=(np.inf,), divides=(True,)):
+    def __init__(self, keys=('image',), lower_bounds=(-np.inf,), upper_bounds=(np.inf,), divides=(True,),
+                 indexes=(0,), tuple_length=2):
         """
         :param keys: tuple of image keys
         :param lower_bounds: tuple of bounds
@@ -828,19 +901,42 @@ class Threshold_Images(ImageProcessor):
         self.upper_bounds = upper_bounds
         self.keys = keys
         self.divides = divides
+        self.indexes = indexes
+        self.tuple_length = tuple_length
 
     def parse(self, image_features, *args, **kwargs):
-        _check_keys_(image_features, self.keys)
-        parsed_features = {key: value for key, value in image_features.items()}
-        for key, lower_bound, upper_bound, divide in zip(self.keys, self.lower_bounds, self.upper_bounds, self.divides):
-            parsed_features[key] = tf.where(image_features[key] > tf.cast(upper_bound, dtype=image_features[key].dtype),
-                                           tf.cast(upper_bound, dtype=image_features[key].dtype), image_features[key])
-            parsed_features[key] = tf.where(image_features[key] < tf.cast(lower_bound, dtype=image_features[key].dtype),
-                                           tf.cast(lower_bound, dtype=image_features[key].dtype), image_features[key])
-            if divide:
-                parsed_features[key] = tf.divide(image_features[key], tf.cast(tf.subtract(upper_bound, lower_bound),
-                                                                             dtype=image_features[key].dtype))
-        return parsed_features
+        if isinstance(image_features, dict):
+            _check_keys_(image_features, self.keys)
+            parsed_features = {key: value for key, value in image_features.items()}
+            for key, lower_bound, upper_bound, divide in zip(self.keys, self.lower_bounds, self.upper_bounds, self.divides):
+                parsed_features[key] = tf.where(image_features[key] > tf.cast(upper_bound, dtype=image_features[key].dtype),
+                                            tf.cast(upper_bound, dtype=image_features[key].dtype), image_features[key])
+                parsed_features[key] = tf.where(image_features[key] < tf.cast(lower_bound, dtype=image_features[key].dtype),
+                                            tf.cast(lower_bound, dtype=image_features[key].dtype), image_features[key])
+                if divide:
+                    parsed_features[key] = tf.divide(image_features[key], tf.cast(tf.subtract(upper_bound, lower_bound),
+                                                                                dtype=image_features[key].dtype))
+            return parsed_features
+        else:
+            outputs = tuple(
+            tf.divide(
+                tf.where(image_features[i] > tf.cast(self.upper_bounds[self.indexes.index(i)], dtype=image_features[i].dtype),
+                         tf.cast(self.upper_bounds[self.indexes.index(i)], dtype=image_features[i].dtype),
+                         tf.where(image_features[i] < tf.cast(self.lower_bounds[self.indexes.index(i)], dtype=image_features[i].dtype),
+                                  tf.cast(self.lower_bounds[self.indexes.index(i)], dtype=image_features[i].dtype),
+                                  image_features[i])),
+                tf.cast(tf.subtract(self.upper_bounds[self.indexes.index(i)], self.lower_bounds[self.indexes.index(i)]), dtype=image_features[i].dtype)
+            )
+            if i in self.indexes and self.divides[self.indexes.index(i)] else
+            tf.where(image_features[i] > tf.cast(self.upper_bounds[self.indexes.index(i)], dtype=image_features[i].dtype),
+                     tf.cast(self.upper_bounds[self.indexes.index(i)], dtype=image_features[i].dtype),
+                     tf.where(image_features[i] < tf.cast(self.lower_bounds[self.indexes.index(i)], dtype=image_features[i].dtype),
+                              tf.cast(self.lower_bounds[self.indexes.index(i)], dtype=image_features[i].dtype),
+                              image_features[i]))
+            if i in self.indexes else image_features[i]
+            for i in range(self.tuple_length)
+        )
+            return outputs
 
 
 class PadImages(ImageProcessor):
