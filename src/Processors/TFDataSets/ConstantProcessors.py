@@ -909,13 +909,13 @@ class Threshold_Images(ImageProcessor):
             _check_keys_(image_features, self.keys)
             parsed_features = {key: value for key, value in image_features.items()}
             for key, lower_bound, upper_bound, divide in zip(self.keys, self.lower_bounds, self.upper_bounds, self.divides):
-                parsed_features[key] = tf.where(image_features[key] > tf.cast(upper_bound, dtype=image_features[key].dtype),
-                                            tf.cast(upper_bound, dtype=image_features[key].dtype), image_features[key])
-                parsed_features[key] = tf.where(image_features[key] < tf.cast(lower_bound, dtype=image_features[key].dtype),
-                                            tf.cast(lower_bound, dtype=image_features[key].dtype), image_features[key])
+                parsed_features[key] = tf.where(parsed_features[key] > tf.cast(upper_bound, dtype=parsed_features[key].dtype),
+                                            tf.cast(upper_bound, dtype=parsed_features[key].dtype), parsed_features[key])
+                parsed_features[key] = tf.where(parsed_features[key] < tf.cast(lower_bound, dtype=parsed_features[key].dtype),
+                                            tf.cast(lower_bound, dtype=parsed_features[key].dtype), parsed_features[key])
                 if divide:
-                    parsed_features[key] = tf.divide(image_features[key], tf.cast(tf.subtract(upper_bound, lower_bound),
-                                                                                dtype=image_features[key].dtype))
+                    parsed_features[key] = tf.divide(parsed_features[key], tf.cast(tf.subtract(upper_bound, lower_bound),
+                                                                                dtype=parsed_features[key].dtype))
             return parsed_features
         else:
             outputs = tuple(
