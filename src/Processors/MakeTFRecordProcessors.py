@@ -2358,21 +2358,22 @@ class MinimumVolumeandAreaPrediction(ImageProcessor):
 
 
 class Threshold_and_Expand(ImageProcessor):
-    def __init__(self, seed_threshold_value=None, lower_threshold_value=None,
+    def __init__(self, seed_threshold_values=None, lower_threshold_values=None,
                  prediction_key: Optional[str] = 'prediction', prediction_keys: Optional[Tuple] = None):
-        self.seed_threshold_value = seed_threshold_value
+        self.seed_threshold_values = seed_threshold_values
         self.Connected_Component_Filter = sitk.ConnectedComponentImageFilter()
         self.RelabelComponent = sitk.RelabelComponentImageFilter()
         self.Connected_Threshold = sitk.ConnectedThresholdImageFilter()
         self.stats = sitk.LabelShapeStatisticsImageFilter()
-        self.lower_threshold_value = lower_threshold_value
+        self.lower_threshold_values = lower_threshold_values
         self.Connected_Threshold.SetUpper(2)
         if prediction_keys is None:
             prediction_keys = (prediction_key,)
         self.prediction_keys = prediction_keys
 
     def pre_process(self, input_features):
-        for pred_key in self.prediction_keys:
+        for pred_key, seed_threshold, lower_threshold in zip(self.prediction_keys, self.seed_threshold_values,
+                                                         self.lower_threshold_values):
             pred = input_features[pred_key]
             for i in range(1, pred.shape[-1]):
                 temp_pred = pred[..., i]
@@ -2382,14 +2383,6 @@ class Threshold_and_Expand(ImageProcessor):
                     temp_pred = temp_pred[0]
                     expanded = True
                 prediction = sitk.GetImageFromArray(temp_pred)
-                if type(self.seed_threshold_value) is not list:
-                    seed_threshold = self.seed_threshold_value
-                else:
-                    seed_threshold = self.seed_threshold_value[i - 1]
-                if type(self.lower_threshold_value) is not list:
-                    lower_threshold = self.lower_threshold_value
-                else:
-                    lower_threshold = self.lower_threshold_value[i - 1]
                 overlap = temp_pred > seed_threshold
                 if np.max(overlap) > 0:
                     seeds = np.transpose(np.asarray(np.where(overlap > 0)))[..., ::-1]
