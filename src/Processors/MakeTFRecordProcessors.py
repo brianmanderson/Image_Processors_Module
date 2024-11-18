@@ -3,6 +3,9 @@ __author__ = 'Brian M Anderson'
 
 import sys
 import os.path
+
+from tensorflow.python.data.ops.optional_ops import Optional
+
 sys.path.append(
     os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
 import SimpleITK as sitk
@@ -12,11 +15,10 @@ from NiftiResampler.ResampleTools import ImageResampler
 from scipy.ndimage.filters import gaussian_filter
 import copy
 from math import ceil, floor
-import typing
 import cv2
 from skimage import morphology
 from PlotScrollNumpyArrays.Plot_Scroll_Images import plot_scroll_Image, plt
-from typing import List, Dict
+from typing import List, Dict, Optional, Tuple
 
 
 def _check_keys_(input_features, keys):
@@ -611,7 +613,7 @@ class AddSpacing(ImageProcessor):
 
 
 class DilateSitkImages:
-    def __init__(self, kernel_radius: typing.Tuple[float, float, float], dilate_keys=('annotation_handle',),
+    def __init__(self, kernel_radius: Tuple[float, float, float], dilate_keys=('annotation_handle',),
                  kernel_type=sitk.sitkBall):
         """
         :param kernel_radius: tuple of the kernel radius to dilate, in row, column, z
@@ -642,7 +644,7 @@ class DilateSitkImages:
 
 
 class DilateNiftiiHandles(DilateSitkImages):
-    def __init__(self, kernel_radius: typing.Tuple[float, float, float], dilate_keys=('annotation_handle',),
+    def __init__(self, kernel_radius: Tuple[float, float, float], dilate_keys=('annotation_handle',),
                  kernel_type=sitk.sitkBall):
         super().__init__(kernel_radius, dilate_keys, kernel_type)
 
@@ -2264,24 +2266,27 @@ class ChangeArrayByArgInArray(ImageProcessor):
 
 
 class Fill_Binary_Holes(ImageProcessor):
-    def __init__(self, prediction_key, dicom_handle_key):
+    def __init__(self, prediction_key: str, dicom_handle_key: str, prediction_keys: Optional[str] = None):
         self.BinaryfillFilter = sitk.BinaryFillholeImageFilter()
         self.BinaryfillFilter.SetFullyConnected(True)
-        self.prediction_key = prediction_key
+        if prediction_keys is None:
+            prediction_keys = (prediction_key,)
+        self.prediction_keys = prediction_keys
         self.dicom_handle_key = dicom_handle_key
 
     def pre_process(self, input_features):
-        pred = input_features[self.prediction_key]
         dicom_handle = input_features[self.dicom_handle_key]
-        for class_num in range(1, pred.shape[-1]):
-            temp_pred = pred[..., class_num]
-            k = sitk.GetImageFromArray(temp_pred.astype('int'))
-            k.SetSpacing(dicom_handle.GetSpacing())
-            output = self.BinaryfillFilter.Execute(k)
-            output_array = sitk.GetArrayFromImage(output)
-            pred[..., class_num] = output_array
-        pred[..., 0] = 0
-        input_features[self.prediction_key] = pred.astype('int8')
+        for pred_key in self.prediction_keys:
+            pred = input_features[pred_key]
+            for class_num in range(1, pred.shape[-1]):
+                temp_pred = pred[..., class_num]
+                k = sitk.GetImageFromArray(temp_pred.astype('int'))
+                k.SetSpacing(dicom_handle.GetSpacing())
+                output = self.BinaryfillFilter.Execute(k)
+                output_array = sitk.GetArrayFromImage(output)
+                pred[..., class_num] = output_array
+            pred[..., 0] = 0
+            input_features[pred_key] = pred.astype('int8')
         return input_features
 
 
