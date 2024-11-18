@@ -2266,10 +2266,11 @@ class ChangeArrayByArgInArray(ImageProcessor):
 
 
 class Fill_Binary_Holes(ImageProcessor):
-    def __init__(self, prediction_key: str, dicom_handle_key: str, prediction_keys: Optional[str] = None):
+    def __init__(self, dicom_handle_key: str, prediction_key: Optional[str] = None,
+                 prediction_keys: Optional[Tuple[str]] = None):
         self.BinaryfillFilter = sitk.BinaryFillholeImageFilter()
         self.BinaryfillFilter.SetFullyConnected(True)
-        if prediction_keys is None:
+        if prediction_keys is None and prediction_key is not None:
             prediction_keys = (prediction_key,)
         self.prediction_keys = prediction_keys
         self.dicom_handle_key = dicom_handle_key
@@ -2296,7 +2297,7 @@ class MinimumVolumeandAreaPrediction(ImageProcessor):
     '''
 
     def __init__(self, min_volume=0.0, min_area=0.0, max_area=np.inf, pred_axis=(1,), prediction_key='prediction',
-                 dicom_handle_key='primary_handle'):
+                 dicom_handle_key='primary_handle', prediction_keys: Optional[Tuple[str]] = None):
         '''
         :param min_volume: Minimum volume of structure allowed, in cm3
         :param min_area: Minimum area of structure allowed, in cm2
@@ -2309,45 +2310,49 @@ class MinimumVolumeandAreaPrediction(ImageProcessor):
         self.pred_axis = pred_axis
         self.Connected_Component_Filter = sitk.ConnectedComponentImageFilter()
         self.RelabelComponent = sitk.RelabelComponentImageFilter()
-        self.prediction_key = prediction_key
+        if prediction_keys is None:
+            prediction_keys = (prediction_key,)
+        self.prediction_keys = prediction_keys
         self.dicom_handle_key = dicom_handle_key
 
     def pre_process(self, input_features):
-        pred = input_features[self.prediction_key]
+
         dicom_handle = input_features[self.dicom_handle_key]
-        for axis in self.pred_axis:
-            temp_pred = pred[..., axis]
-            if self.min_volume != 0:
-                label_image = self.Connected_Component_Filter.Execute(sitk.GetImageFromArray(temp_pred) > 0)
-                self.RelabelComponent.SetMinimumObjectSize(
-                    int(self.min_volume / np.prod(dicom_handle.GetSpacing())))
-                label_image = self.RelabelComponent.Execute(label_image)
-                temp_pred = sitk.GetArrayFromImage(label_image > 0)
-            if self.min_area != 0 or self.max_area != np.inf:
-                slice_indexes = np.where(np.sum(temp_pred, axis=(1, 2)) > 0)
-                if slice_indexes:
-                    slice_spacing = np.prod(dicom_handle.GetSpacing()[:-1])
-                    for slice_index in slice_indexes[0]:
-                        labels = morphology.label(temp_pred[slice_index], connectivity=1)
-                        for i in range(1, labels.max() + 1):
-                            new_area = labels[labels == i].shape[0]
-                            temp_area = slice_spacing * new_area
-                            if temp_area > self.max_area:
-                                labels[labels == i] = 0
-                                continue
-                            elif temp_area < self.min_area:
-                                labels[labels == i] = 0
-                                continue
-                        labels[labels > 0] = 1
-                        temp_pred[slice_index] = labels
-            if self.min_volume != 0:
-                label_image = self.Connected_Component_Filter.Execute(sitk.GetImageFromArray(temp_pred) > 0)
-                self.RelabelComponent.SetMinimumObjectSize(
-                    int(self.min_volume / np.prod(dicom_handle.GetSpacing())))
-                label_image = self.RelabelComponent.Execute(label_image)
-                temp_pred = sitk.GetArrayFromImage(label_image > 0)
-            pred[..., axis] = temp_pred
-        input_features[self.prediction_key] = pred
+        for pred_key in self.prediction_keys:
+            pred = input_features[pred_key]
+            for axis in self.pred_axis:
+                temp_pred = pred[..., axis]
+                if self.min_volume != 0:
+                    label_image = self.Connected_Component_Filter.Execute(sitk.GetImageFromArray(temp_pred) > 0)
+                    self.RelabelComponent.SetMinimumObjectSize(
+                        int(self.min_volume / np.prod(dicom_handle.GetSpacing())))
+                    label_image = self.RelabelComponent.Execute(label_image)
+                    temp_pred = sitk.GetArrayFromImage(label_image > 0)
+                if self.min_area != 0 or self.max_area != np.inf:
+                    slice_indexes = np.where(np.sum(temp_pred, axis=(1, 2)) > 0)
+                    if slice_indexes:
+                        slice_spacing = np.prod(dicom_handle.GetSpacing()[:-1])
+                        for slice_index in slice_indexes[0]:
+                            labels = morphology.label(temp_pred[slice_index], connectivity=1)
+                            for i in range(1, labels.max() + 1):
+                                new_area = labels[labels == i].shape[0]
+                                temp_area = slice_spacing * new_area
+                                if temp_area > self.max_area:
+                                    labels[labels == i] = 0
+                                    continue
+                                elif temp_area < self.min_area:
+                                    labels[labels == i] = 0
+                                    continue
+                            labels[labels > 0] = 1
+                            temp_pred[slice_index] = labels
+                if self.min_volume != 0:
+                    label_image = self.Connected_Component_Filter.Execute(sitk.GetImageFromArray(temp_pred) > 0)
+                    self.RelabelComponent.SetMinimumObjectSize(
+                        int(self.min_volume / np.prod(dicom_handle.GetSpacing())))
+                    label_image = self.RelabelComponent.Execute(label_image)
+                    temp_pred = sitk.GetArrayFromImage(label_image > 0)
+                pred[..., axis] = temp_pred
+            input_features[pred_key] = pred
         return input_features
 
 
