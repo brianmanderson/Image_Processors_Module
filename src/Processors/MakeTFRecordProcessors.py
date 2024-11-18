@@ -2267,7 +2267,7 @@ class ChangeArrayByArgInArray(ImageProcessor):
 
 class Fill_Binary_Holes(ImageProcessor):
     def __init__(self, dicom_handle_key: str, prediction_key: Optional[str] = None,
-                 prediction_keys: Optional[Tuple[str]] = None):
+                 prediction_keys: Optional[Tuple] = None):
         self.BinaryfillFilter = sitk.BinaryFillholeImageFilter()
         self.BinaryfillFilter.SetFullyConnected(True)
         if prediction_keys is None and prediction_key is not None:
@@ -2296,8 +2296,9 @@ class MinimumVolumeandAreaPrediction(ImageProcessor):
     This should come after prediction thresholding
     '''
 
-    def __init__(self, min_volume=0.0, min_area=0.0, max_area=np.inf, pred_axis=(1,), prediction_key='prediction',
-                 dicom_handle_key='primary_handle', prediction_keys: Optional[Tuple[str]] = None):
+    def __init__(self, min_volume=0.0, min_area=0.0, max_area=np.inf, pred_axis=(1,),
+                 prediction_key: Optional[str] = 'prediction', dicom_handle_key='primary_handle',
+                 prediction_keys: Optional[Tuple] = None):
         '''
         :param min_volume: Minimum volume of structure allowed, in cm3
         :param min_area: Minimum area of structure allowed, in cm2
@@ -2357,7 +2358,8 @@ class MinimumVolumeandAreaPrediction(ImageProcessor):
 
 
 class Threshold_and_Expand(ImageProcessor):
-    def __init__(self, seed_threshold_value=None, lower_threshold_value=None, prediction_key='prediction'):
+    def __init__(self, seed_threshold_value=None, lower_threshold_value=None,
+                 prediction_key: Optional[str] = 'prediction', prediction_keys: Optional[Tuple] = None):
         self.seed_threshold_value = seed_threshold_value
         self.Connected_Component_Filter = sitk.ConnectedComponentImageFilter()
         self.RelabelComponent = sitk.RelabelComponentImageFilter()
@@ -2365,37 +2367,40 @@ class Threshold_and_Expand(ImageProcessor):
         self.stats = sitk.LabelShapeStatisticsImageFilter()
         self.lower_threshold_value = lower_threshold_value
         self.Connected_Threshold.SetUpper(2)
-        self.prediction_key = prediction_key
+        if prediction_keys is None:
+            prediction_keys = (prediction_key,)
+        self.prediction_keys = prediction_keys
 
     def pre_process(self, input_features):
-        pred = input_features[self.prediction_key]
-        for i in range(1, pred.shape[-1]):
-            temp_pred = pred[..., i]
-            output = np.zeros(temp_pred.shape)
-            expanded = False
-            if len(temp_pred.shape) == 4:
-                temp_pred = temp_pred[0]
-                expanded = True
-            prediction = sitk.GetImageFromArray(temp_pred)
-            if type(self.seed_threshold_value) is not list:
-                seed_threshold = self.seed_threshold_value
-            else:
-                seed_threshold = self.seed_threshold_value[i - 1]
-            if type(self.lower_threshold_value) is not list:
-                lower_threshold = self.lower_threshold_value
-            else:
-                lower_threshold = self.lower_threshold_value[i - 1]
-            overlap = temp_pred > seed_threshold
-            if np.max(overlap) > 0:
-                seeds = np.transpose(np.asarray(np.where(overlap > 0)))[..., ::-1]
-                seeds = [[int(i) for i in j] for j in seeds]
-                self.Connected_Threshold.SetLower(lower_threshold)
-                self.Connected_Threshold.SetSeedList(seeds)
-                output = sitk.GetArrayFromImage(self.Connected_Threshold.Execute(prediction))
-                if expanded:
-                    output = output[None, ...]
-            pred[..., i] = output
-        input_features[self.prediction_key] = pred
+        for pred_key in self.prediction_keys:
+            pred = input_features[pred_key]
+            for i in range(1, pred.shape[-1]):
+                temp_pred = pred[..., i]
+                output = np.zeros(temp_pred.shape)
+                expanded = False
+                if len(temp_pred.shape) == 4:
+                    temp_pred = temp_pred[0]
+                    expanded = True
+                prediction = sitk.GetImageFromArray(temp_pred)
+                if type(self.seed_threshold_value) is not list:
+                    seed_threshold = self.seed_threshold_value
+                else:
+                    seed_threshold = self.seed_threshold_value[i - 1]
+                if type(self.lower_threshold_value) is not list:
+                    lower_threshold = self.lower_threshold_value
+                else:
+                    lower_threshold = self.lower_threshold_value[i - 1]
+                overlap = temp_pred > seed_threshold
+                if np.max(overlap) > 0:
+                    seeds = np.transpose(np.asarray(np.where(overlap > 0)))[..., ::-1]
+                    seeds = [[int(i) for i in j] for j in seeds]
+                    self.Connected_Threshold.SetLower(lower_threshold)
+                    self.Connected_Threshold.SetSeedList(seeds)
+                    output = sitk.GetArrayFromImage(self.Connected_Threshold.Execute(prediction))
+                    if expanded:
+                        output = output[None, ...]
+                pred[..., i] = output
+            input_features[pred_key] = pred
         return input_features
 
 
