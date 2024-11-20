@@ -2297,7 +2297,7 @@ class MinimumVolumeandAreaPrediction(ImageProcessor):
     '''
 
     def __init__(self, min_volume=0.0, min_area=0.0, max_area=np.inf, pred_axis=(1,),
-                 prediction_key: Optional[str] = 'prediction', dicom_handle_key='primary_handle',
+                 prediction_key: Optional[str] = 'prediction', dicom_handle_key='primary_handle', largest_only=False,
                  prediction_keys: Optional[Tuple] = None):
         '''
         :param min_volume: Minimum volume of structure allowed, in cm3
@@ -2315,6 +2315,7 @@ class MinimumVolumeandAreaPrediction(ImageProcessor):
             prediction_keys = (prediction_key,)
         self.prediction_keys = prediction_keys
         self.dicom_handle_key = dicom_handle_key
+        self.largest_only = largest_only
 
     def pre_process(self, input_features):
 
@@ -2351,7 +2352,10 @@ class MinimumVolumeandAreaPrediction(ImageProcessor):
                     self.RelabelComponent.SetMinimumObjectSize(
                         int(self.min_volume / np.prod(dicom_handle.GetSpacing())))
                     label_image = self.RelabelComponent.Execute(label_image)
-                    temp_pred = sitk.GetArrayFromImage(label_image > 0)
+                    if self.largest_only:
+                        temp_pred = sitk.GetArrayFromImage(label_image == 1)
+                    else:
+                        temp_pred = sitk.GetArrayFromImage(label_image > 0)
                 pred[..., axis] = temp_pred
             input_features[pred_key] = pred
         return input_features
