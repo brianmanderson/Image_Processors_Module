@@ -430,9 +430,13 @@ class FlipImages(ImageProcessor):
 
 
 class RandomCrop(ImageProcessor):
-    def __init__(self, keys_to_crop=('image_array', 'annotation_array'), crop_dimensions=(32, 32, 32, 1)):
+    def __init__(self, keys_to_crop=('image_array', 'annotation_array'), crop_dimensions=(32, 32, 32, 1),
+                 min_start_stop=None):
+        if min_start_stop is None:
+            min_start_stop = tuple([(None, None) for _ in range(len(crop_dimensions))])
         self.keys_to_crop = keys_to_crop
         self.crop_dimensions = crop_dimensions
+        self.min_start_stop = min_start_stop
 
     def parse(self, image_features, *args, **kwargs):
         # Ensure all required keys are in the dictionary
@@ -447,9 +451,16 @@ class RandomCrop(ImageProcessor):
         crop_dimensions = self.crop_dimensions
         start_indices = []
         for i in range(len(crop_dimensions)):
-            max_start = image.shape[i] - crop_dimensions[i]
+            start_stop = self.min_start_stop[i]
+            start_val = start_stop[0]
+            if start_val is None:
+                start_val = 0
+            stop_val = start_stop[1]
+            if stop_val is None:
+                stop_val = image.shape[i]
+            max_start = min((image.shape[i] - crop_dimensions[i], stop_val))
             if max_start > 0:
-                start_index = tf.random.uniform([], 0, max_start, dtype=tf.int32)
+                start_index = tf.random.uniform([], start_val, max_start, dtype=tf.int32)
             else:
                 start_index = 0
             start_indices.append(start_index)
