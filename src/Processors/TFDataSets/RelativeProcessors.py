@@ -90,14 +90,15 @@ class AddMetricBasedOnImage(ImageProcessor):
 
     def parse(self, input_features, *args, **kwargs):
         _check_keys_(input_features=input_features, keys=self.image_keys)
+        parsed_features = {key: value for key, value in input_features.items()}
         for image_key, ref_method, out_key in zip(self.image_keys, self.methods, self.out_key_names):
             if ref_method == 'reduce_max':
                 value = tf.reduce_max(input_features[image_key])
-                input_features[out_key] = value
+                parsed_features[out_key] = value
             elif ref_method == 'reduce_min':
                 value = tf.reduce_min(input_features[image_key])
-                input_features[out_key] = value
-        return input_features
+                parsed_features[out_key] = value
+        return parsed_features
 
 
 class NormalizeBasedOnOther(ImageProcessor):
