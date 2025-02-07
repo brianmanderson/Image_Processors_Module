@@ -6,13 +6,6 @@ import os.path
 sys.path.append(
     os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
 import tensorflow as tf
-import numpy as np
-from tensorflow.python.framework import tensor_shape
-from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import random_ops
-from tensorflow.python.framework import ops
 from PlotScrollNumpyArrays.Plot_Scroll_Images import plot_scroll_Image, plt
 
 
@@ -53,33 +46,34 @@ class MaskOneBasedOnOther(ImageProcessor):
     def parse(self, input_features, *args, **kwargs):
         _check_keys_(input_features=input_features, keys=self.guiding_keys)
         _check_keys_(input_features=input_features, keys=self.changing_keys)
+        parsed_features = {key: value for key, value in input_features.items()}
         for guiding_key, changing_key, guiding_value, mask_value, method in zip(self.guiding_keys, self.changing_keys,
                                                                                 self.guiding_values, self.mask_values,
                                                                                 self.methods):
-            mask_value = tf.constant(mask_value, dtype=input_features[changing_key].dtype)
+            mask_value = tf.constant(mask_value, dtype=parsed_features[changing_key].dtype)
             if self.on_channel:
-                val = tf.constant(1, dtype=input_features[guiding_key].dtype)
+                val = tf.constant(1, dtype=parsed_features[guiding_key].dtype)
                 if method == 'equal_to':
-                    input_features[changing_key] = tf.where(input_features[guiding_key][..., guiding_value] == val,
-                                                            mask_value, input_features[changing_key])
+                    parsed_features[changing_key] = tf.where(parsed_features[guiding_key][..., guiding_value] == val,
+                                                            mask_value, parsed_features[changing_key])
                 elif method == 'less_than':
-                    input_features[changing_key] = tf.where(input_features[guiding_key] < val,
-                                                            mask_value, input_features[changing_key])
+                    parsed_features[changing_key] = tf.where(parsed_features[guiding_key] < val,
+                                                            mask_value, parsed_features[changing_key])
                 elif method == 'greater_than':
-                    input_features[changing_key] = tf.where(input_features[guiding_key] > val,
-                                                            mask_value, input_features[changing_key])
+                    parsed_features[changing_key] = tf.where(parsed_features[guiding_key] > val,
+                                                            mask_value, parsed_features[changing_key])
             else:
-                guiding_value = tf.constant(guiding_value, dtype=input_features[guiding_key].dtype)
+                guiding_value = tf.constant(guiding_value, dtype=parsed_features[guiding_key].dtype)
                 if method == 'equal_to':
-                    input_features[changing_key] = tf.where(input_features[guiding_key] == guiding_value,
-                                                            mask_value, input_features[changing_key])
+                    parsed_features[changing_key] = tf.where(parsed_features[guiding_key] == guiding_value,
+                                                            mask_value, parsed_features[changing_key])
                 elif method == 'less_than':
-                    input_features[changing_key] = tf.where(input_features[guiding_key] < guiding_value,
-                                                            mask_value, input_features[changing_key])
+                    parsed_features[changing_key] = tf.where(parsed_features[guiding_key] < guiding_value,
+                                                            mask_value, parsed_features[changing_key])
                 elif method == 'greater_than':
-                    input_features[changing_key] = tf.where(input_features[guiding_key] > guiding_value,
-                                                            mask_value, input_features[changing_key])
-        return input_features
+                    parsed_features[changing_key] = tf.where(parsed_features[guiding_key] > guiding_value,
+                                                            mask_value, parsed_features[changing_key])
+        return parsed_features
 
 
 class AddMetricBasedOnImage(ImageProcessor):
@@ -115,21 +109,22 @@ class NormalizeBasedOnOther(ImageProcessor):
     def parse(self, input_features, *args, **kwargs):
         _check_keys_(input_features=input_features, keys=self.guiding_keys)
         _check_keys_(input_features=input_features, keys=self.changing_keys)
+        parsed_features = {key: value for key, value in input_features.items()}
         for guiding_key, changing_key, ref_method, change_method in zip(self.guiding_keys, self.changing_keys,
                                                                         self.methods, self.changing_methods):
             if ref_method == 'reduce_max':
-                value = tf.reduce_max(input_features[guiding_key])
+                value = tf.reduce_max(parsed_features[guiding_key])
                 if change_method == 'divide':
-                    input_features[changing_key] = tf.divide(input_features[changing_key], value)
+                    parsed_features[changing_key] = tf.divide(parsed_features[changing_key], value)
                 elif change_method == 'multiply':
-                    input_features[changing_key] = tf.multiply(input_features[changing_key], value)
+                    parsed_features[changing_key] = tf.multiply(parsed_features[changing_key], value)
             elif ref_method == 'reduce_min':
-                value = tf.reduce_min(input_features[guiding_key])
+                value = tf.reduce_min(parsed_features[guiding_key])
                 if change_method == 'divide':
-                    input_features[changing_key] = tf.divide(input_features[changing_key], value)
+                    parsed_features[changing_key] = tf.divide(parsed_features[changing_key], value)
                 elif change_method == 'multiply':
-                    input_features[changing_key] = tf.multiply(input_features[changing_key], value)
-        return input_features
+                    parsed_features[changing_key] = tf.multiply(parsed_features[changing_key], value)
+        return parsed_features
 
 
 class DivideBasedOnOther(ImageProcessor):
@@ -139,9 +134,10 @@ class DivideBasedOnOther(ImageProcessor):
     def parse(self, input_features, *args, **kwargs):
         _check_keys_(input_features=input_features, keys=self.guiding_keys)
         _check_keys_(input_features=input_features, keys=self.changing_keys)
+        parsed_features = {key: value for key, value in input_features.items()}
         for guiding_key, changing_key in zip(self.guiding_keys, self.changing_keys):
-            input_features[changing_key] = input_features[changing_key] / input_features[guiding_key]
-        return input_features
+            parsed_features[changing_key] = parsed_features[changing_key] / input_features[guiding_key]
+        return parsed_features
 
 
 if __name__ == '__main__':
