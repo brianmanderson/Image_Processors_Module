@@ -392,9 +392,9 @@ class FlipImages(ImageProcessor):
         self.random_flip_up_down = None
         self.random_flip_left_right = None
         if flip_up_down:
-            self.random_flip_up_down = tf.keras.layers.RandomFlip(mode='horizontal', seed=seed)
+            self.random_flip_up_down = tf.keras.layers.RandomFlip(mode='vertical', seed=seed)
         if flip_left_right:
-            self.random_flip_left_right = tf.keras.layers.RandomFlip(mode='vertical', seed=seed)
+            self.random_flip_left_right = tf.keras.layers.RandomFlip(mode='horizontal', seed=seed)
         self.keys = keys
         self.global_3D = on_global_3D
 
@@ -404,19 +404,14 @@ class FlipImages(ImageProcessor):
         combine_images = [image_features[i] for i in self.keys]
         flip_image = tf.concat(combine_images, axis=-1)
         og_shape = self.og_shape
+        if self.global_3D:
+            flip_image = tf.reshape(flip_image, [og_shape[0] * og_shape[1]] + [i for i in og_shape[2:]])
         if self.flip_up_down:
-            if self.global_3D:
-                flip_image = tf.reshape(flip_image, [og_shape[0] * og_shape[1]] + [i for i in og_shape[2:]])
             flip_image = self.random_flip_up_down(flip_image)
-            if self.global_3D:
-                flip_image = tf.reshape(flip_image, og_shape)
         if self.flip_left_right:
-            if self.global_3D:
-                flip_image = tf.reshape(tf.transpose(flip_image, [0, 2, 1, 3]), [og_shape[0] * og_shape[1], og_shape[2]] + [i for i in og_shape[3:]])
             flip_image = self.random_flip_left_right(flip_image)
-            if self.global_3D:
-                flip_image = tf.reshape(flip_image, og_shape)
-                flip_image = tf.transpose(flip_image, [0, 2, 1, 3])
+        if self.global_3D:
+            flip_image = tf.reshape(flip_image, og_shape)
         flipped_image = flip_image
         start_dim = 0
         for key in self.keys:
