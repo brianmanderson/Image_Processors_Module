@@ -10,17 +10,19 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v4  # Update to the latest version
+    - uses: actions/checkout@v4  # Latest version
 
     - name: Set up Python
-      uses: actions/setup-python@v5  # Update to the latest version
+      uses: actions/setup-python@v5  # Latest version
       with:
         python-version: '3.x'
 
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install build
+        pip install build twine
+        # Install requirements only if requirements.txt exists
+        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
     - name: Build package
       run: python -m build
