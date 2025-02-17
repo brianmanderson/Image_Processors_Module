@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ImageProcessorsModule"
+version = "1.0.2"
+authors = [
+    { name = "Brian Mark Anderson", email = "markba122@gmail.com" }
+]
+description = "Services for processing and creating TensorFlow or PyTorch records"
+readme = "README.md"
+license = { text = "GNU Affero General Public License v3" }
+requires-python = ">=3.8"
+dependencies = [
+    # Dependencies will be read from requirements.txt at build time
+]
+
+[tool.setuptools]
+packages = ["ImageProcessorsModule"]
+package-dir = { "" = "src/Processors" }
+include-package-data = true
+
+[project.urls]
+Homepage = "https://github.com/brianmanderson/Image_Processors_Module"
+Repository = "https://github.com/brianmanderson/Image_Processors_Module"
+
+[project.classifiers]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: GNU Affero General Public License v3"
+]
+
+[tool.setuptools.dynamic]
+dependencies = { file = ["requirements.txt"] }
