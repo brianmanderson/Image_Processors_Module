@@ -13,7 +13,7 @@ setup(
     name='ImageProcessorsModule',
     author='Brian Mark Anderson',
     author_email='markba122@gmail.com',
-    version='0.0.2',
+    version='0.0.3',
     description='Services for processing and creating tensorflow or pytorch records',
     long_description=long_description,
     long_description_content_type="text/markdown",
