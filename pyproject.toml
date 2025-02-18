@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ImageProcessorsModule"
-version = "1.0.0"
+version = "1.0.2"
 description = "Services for processing and creating TensorFlow or PyTorch records"
 readme = "README.md"
 license = { text = "GNU Affero General Public License v3" }
