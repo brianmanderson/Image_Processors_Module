@@ -1710,6 +1710,9 @@ class AddByValues(ImageProcessor):
             input_features[key] = image_array
         return input_features
 
+    def __repr__(self):
+        return f"Adding {self.values} to {self.image_keys}, respectively"
+
 
 class AddLiverKey(ImageProcessor):
     def __init__(self, annotation_keys=('primary_mask',), actions=('arg_max',), out_keys=('liver,',)):
@@ -2289,6 +2292,9 @@ class MultiplyByValues(ImageProcessor):
             input_features[key] = image_array
         return input_features
 
+    def __repr__(self):
+        return f"Multiplying {self.image_keys} by {self.values}"
+
 
 class ChangeArrayByArgInArray(ImageProcessor):
     def __init__(self, reference_keys=('image',), value_args=(np.max,),
@@ -2473,6 +2479,9 @@ class Threshold_Images(ImageProcessor):
                 image = image / (self.upper - self.lower)
             input_features[key] = image
         return input_features
+
+    def __repr__(self):
+        return f"Thresholding {self.image_keys} between {self.lower} and {self.upper}, dividing {self.divide}"
 
 
 class Normalize_to_annotation(ImageProcessor):
