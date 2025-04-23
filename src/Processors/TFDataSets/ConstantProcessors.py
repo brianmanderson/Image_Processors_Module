@@ -203,6 +203,16 @@ class FixOutputShapes(ImageProcessor):
         return parsed_features
 
 
+class OnlyKeepKeys(ImageProcessor):
+    def __init__(self, keys=('image_array', 'mask_array')):
+        self.keys = keys
+    
+    def parse(self, image_features):
+        _check_keys_(image_features, self.keys)
+        parsed_features = {key: value for key, value in image_features.items() if key in self.keys}
+        return parsed_features
+
+
 class DefineShape(ImageProcessor):
     def __init__(self, keys=('image_array', 'mask_array'), image_shapes=([None, None, None, 1], [None, None, None, 2])):
         self.keys = keys
