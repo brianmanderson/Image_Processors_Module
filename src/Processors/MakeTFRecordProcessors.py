@@ -245,6 +245,8 @@ class Remove_Smallest_Structures(object):
         output = sitk.BinaryThreshold(sitk.Cast(label_image, sitk.sitkFloat32), lowerThreshold=0.1, upperThreshold=1.0)
         return output
 
+    def __repr__(self):
+        return "Remove Smallest Structure"
 
 class Remove_Lowest_Probabilty_Structure(object):
     def __init__(self):
@@ -269,6 +271,8 @@ class Remove_Lowest_Probabilty_Structure(object):
         image_slice[out_mask == 0] = 0
         return image_slice
 
+    def __repr__(self):
+        return "Remove Lowest Probability Structure"
 
 class BinValuesConvertClass(object):
     def __init__(self, initial_min, initial_max, output_value) -> None:
@@ -358,6 +362,8 @@ class AddConstant(ImageProcessor):
             image_features[key] = image_features[key] + value
         return image_features
 
+    def __repr__(self):
+        return f"Add constants {self.values} to {self.keys}"
 
 class Combine_Annotations(ImageProcessor):
     def __init__(self, annotation_input=[5, 6, 7, 8], to_annotation=5):
@@ -377,6 +383,8 @@ class Combine_Annotations(ImageProcessor):
         input_features['annotation'] = annotation
         return input_features
 
+    def __repr__(self):
+        return f"Combine annotations from values {self.annotation_input} to {self.to_annotation}"
 
 class To_Categorical(ImageProcessor):
     def __init__(self, num_classes=None, annotation_keys=('annotation',)):
@@ -391,6 +399,8 @@ class To_Categorical(ImageProcessor):
             input_features['num_classes_{}'.format(key)] = self.num_classes
         return input_features
 
+    def __repr__(self):
+        return f"To categorical from {self.annotation_keys} to {self.num_classes} classes"
 
 class ToCategorical(To_Categorical):
     def __init__(self, num_classes=None, annotation_keys=('annotation',)):
@@ -771,6 +781,10 @@ class ResampleSITKHandles(ImageProcessor):
                 input_features[key] = image_handle
         return input_features
 
+    def __repr__(self):
+        return (f"Resample {self.resample_keys} to {self.desired_output_spacing} or {self.desired_output_size}"
+                f" with {self.resample_interpolators}")
+
 
 class Resampler(ImageProcessor):
     def __init__(self, resample_keys=('image', 'annotation'), resample_interpolators=('Linear', 'Nearest'),
@@ -935,6 +949,9 @@ class ArgMax(ImageProcessor):
             pred = np.argmax(pred, axis=self.axis)
             input_features[key] = pred
         return input_features
+
+    def __repr__(self):
+        return f"Argmax {self.image_keys} with axis {self.axis}"
 
 
 class Ensure_Image_Proportions(ImageProcessor):
@@ -1151,6 +1168,9 @@ class SqueezeDimensions(ImageProcessor):
                 input_features[key] = np.squeeze(input_features[key])
         return input_features
 
+    def __repr__(self):
+        return f"Squeeze {self.image_keys}"
+
 
 class ExpandDimensions(ImageProcessor):
     def __init__(self, image_keys=('image', 'annotation'), axis=-1, post_process_keys=('image', 'prediction')):
@@ -1172,6 +1192,9 @@ class ExpandDimensions(ImageProcessor):
             input_features[key] = i
         return input_features
 
+    def __repr__(self):
+        return f"Expand {self.image_keys} on {self.axis} axes"
+
 
 class RepeatChannel(ImageProcessor):
     def __init__(self, num_repeats=3, axis=-1, image_keys=('image',)):
@@ -1184,6 +1207,9 @@ class RepeatChannel(ImageProcessor):
             images = input_features[key]
             input_features[key] = np.repeat(images, self.num_repeats, axis=self.axis)
         return input_features
+
+    def __repr__(self):
+        return f"Repeat {self.image_keys} on {self.axis} axes {self.num_repeats} times"
 
 
 class CastHandle(ImageProcessor):
@@ -1210,6 +1236,9 @@ class CastHandle(ImageProcessor):
             input_features[key] = sitk.Cast(input_features[key], dtype)
         return input_features
 
+    def __repr__(self):
+        return f"Cast {self.image_handle_keys} to {self.d_type_keys}"
+
 
 class CastData(ImageProcessor):
     def __init__(self, image_keys=('image',), dtypes=('float32',)):
@@ -1226,6 +1255,9 @@ class CastData(ImageProcessor):
             input_features[key] = input_features[key].astype(dtype)
         return input_features
 
+    def __repr__(self):
+        return f"Cast {self.image_keys} to {self.dtypes}"
+
 
 class ConvertArrayToHandle(ImageProcessor):
     def __init__(self, array_keys=('gradients',), out_keys=('gradients_handle',)):
@@ -1241,6 +1273,9 @@ class ConvertArrayToHandle(ImageProcessor):
         for array_key, out_key in zip(self.array_keys, self.out_keys):
             input_features[out_key] = sitk.GetImageFromArray(input_features[array_key])
         return input_features
+
+    def __repr__(self):
+        return f"Convert NumPy Arrays {self.array_keys} to Simple ITK Images called {self.out_keys}"
 
 
 def _orient_handles_(moving_handle, fixed_handle):
@@ -1294,6 +1329,8 @@ class AddNifti(ImageProcessor):
             input_features[out_key] = image_handle
         return input_features
 
+    def __repr__(self):
+        return f"Load files at {self.nifti_path_keys} to Simple ITK Images called {self.out_keys}"
 
 class LoadNifti(AddNifti):
     def __init__(self, nifti_path_keys=('image_path', 'annotation_path'), out_keys=('image', 'annotation')):
@@ -1310,6 +1347,9 @@ class DeleteKeys(ImageProcessor):
             del input_features[key]
         return input_features
 
+    def __repr__(self):
+        return f"Delete keys {self.keys_to_delete}"
+
 
 class ArrayToNiftii(ImageProcessor):
     def __init__(self, array_keys=('prediction',), out_keys=('prediction_handle',)):
@@ -1323,6 +1363,9 @@ class ArrayToNiftii(ImageProcessor):
             image_handle = sitk.GetImageFromArray(image_array)
             input_features[out_key] = image_handle
         return input_features
+
+    def __repr__(self):
+        return f"Convert NumPy Arrays {self.array_keys} to SimpleITK handles {self.out_keys}"
 
 
 class NiftiToArray(ImageProcessor):
@@ -1339,6 +1382,9 @@ class NiftiToArray(ImageProcessor):
             input_features[out_key] = image_array.astype(dtype=dtype)
             input_features['{}_spacing'.format(out_key)] = np.asarray(image_handle.GetSpacing(), dtype='float32')
         return input_features
+
+    def __repr__(self):
+        return f"Convert SimpleITK Images {self.nifti_keys} to NumPy Arrays {self.out_keys}"
 
 
 class SimpleITKImageToArray(NiftiToArray):
@@ -1376,6 +1422,10 @@ class Clip_Images_By_Extension(ImageProcessor):
                 image = image[start:stop, ...]
             input_features[clipping_key] = image
         return input_features
+
+    def __repr__(self):
+        return (f"Clipping/Padding NumPy Arrays {self.guiding_keys} by {self.clipping_keys} and "
+                f"extension of {self.extension}")
 
 
 class Normalize_MRI(ImageProcessor):
@@ -1659,6 +1709,9 @@ class AddByValues(ImageProcessor):
             image_array += value
             input_features[key] = image_array
         return input_features
+
+    def __repr__(self):
+        return f"Adding {self.values} to {self.image_keys}, respectively"
 
 
 class AddLiverKey(ImageProcessor):
@@ -2239,6 +2292,9 @@ class MultiplyByValues(ImageProcessor):
             input_features[key] = image_array
         return input_features
 
+    def __repr__(self):
+        return f"Multiplying {self.image_keys} by {self.values}"
+
 
 class ChangeArrayByArgInArray(ImageProcessor):
     def __init__(self, reference_keys=('image',), value_args=(np.max,),
@@ -2423,6 +2479,9 @@ class Threshold_Images(ImageProcessor):
                 image = image / (self.upper - self.lower)
             input_features[key] = image
         return input_features
+
+    def __repr__(self):
+        return f"Thresholding {self.image_keys} between {self.lower} and {self.upper}, dividing {self.divide}"
 
 
 class Normalize_to_annotation(ImageProcessor):

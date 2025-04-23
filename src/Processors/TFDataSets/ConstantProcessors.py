@@ -307,8 +307,7 @@ class ToCategorical(ImageProcessor):
             parsed_features = {key: value for key, value in image_features.items()}
             for key, num_classes in zip(self.annotation_keys, self.number_of_classes):
                 y = image_features[key]
-                y = tf.squeeze(y)
-                parsed_features[key] = tf.cast(tf.one_hot(tf.cast(y, tf.int32), num_classes), dtype=y.dtype)
+                parsed_features[key] = tf.cast(tf.keras.utils.to_categorical(y, num_classes), dtype=y.dtype)
             return parsed_features
         else:
             outputs = tuple(tf.cast(tf.one_hot(tf.cast(image_features[i], tf.int32), self.number_of_classes[self.indexes.index(i)]), 'int32')

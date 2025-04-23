@@ -1,0 +1,36 @@
+name: Publish Python Package
+
+on:
+  push:
+    tags:
+      - 'v*'  # Triggers the workflow on tag pushes that match the pattern v*
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4  # Latest version
+
+    - name: Set up Python
+      uses: actions/setup-python@v5  # Latest version
+      with:
+        python-version: '3.x'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install build twine
+        # Install requirements only if requirements.txt exists
+        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+
+    - name: Build package
+      run: python -m build
+
+    - name: Publish to PyPI
+      env:
+        TWINE_USERNAME: __token__
+        TWINE_PASSWORD: ${{ secrets.PYPI_TOKEN }}
+      run: |
+        python -m pip install --upgrade twine
+        python -m twine upload dist/*

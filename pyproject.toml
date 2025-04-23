@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ImageProcessorsModule"
+version = "1.0.4"
+description = "Services for processing and creating TensorFlow or PyTorch records"
+readme = "README.md"
+license = { text = "GNU Affero General Public License v3" }
+authors = [
+  { name = "Brian Mark Anderson", email = "markba122@gmail.com" }
+]
+requires-python = ">=3.8"
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "License :: OSI Approved :: GNU Affero General Public License v3"
+]
+dependencies = []  # This will be provided dynamically below
+
+[project.urls]
+Homepage = "https://github.com/brianmanderson/Image_Processors_Module"
+Repository = "https://github.com/brianmanderson/Image_Processors_Module"
+
+[tool.setuptools]
+# This maps the package name to its source directory.
+package-dir = { "ImageProcessorsModule" = "src/Processors" , "TFDataSets" = "src/Processors/TFDataSets", "PyTorchDataSets" = "src/Processors/PyTorchDataSets"}
+packages = ["ImageProcessorsModule", "TFDataSets", "PyTorchDataSets"]
+include-package-data = true
+
+[tool.setuptools.dynamic]
+# Reads dependencies from requirements.txt at build time.
+dependencies = { file = "requirements.txt" }
