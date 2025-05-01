@@ -28,18 +28,23 @@ def _check_keys_(input_features, keys):
 
 class ImageProcessor(object):
     @tf.function
+    def action(self, *args, **kwargs):
+        return args, kwargs
+    
     def parse(self, *args, **kwargs):
         return args, kwargs
 
 
-class Decoder(object):
+class Decoder(ImageProcessor):
     def __init__(self, d_type_dict=None):
         self.d_type_dict = d_type_dict
 
 
 class DecodeImagesAnnotations(Decoder):
+    def action(tensor, dtype, out_size):
+        return tf.reshape(tf.io.decode_raw(tensor, out_type=dtype), out_size)
+    
     def parse(self, image_features, *args, **kwargs):
-        parsed_features = {key: value for key, value in image_features.items()}
         all_keys = list(image_features.keys())
         is_modern = False
         for key in image_features.keys():
@@ -52,8 +57,7 @@ class DecodeImagesAnnotations(Decoder):
                 if key in self.d_type_dict:
                     dtype = self.d_type_dict[key]
                 out_size = tuple([image_features[i] for i in size_keys])
-                parsed_features[key] = tf.reshape(tf.io.decode_raw(image_features[key], out_type=dtype),
-                                                 out_size)
+                image_features[key] = self.action(image_features[key], dtype, out_size)
                 is_modern = True
         if not is_modern:  # To retain backwards compatibility
             print('Please update to the latest versions of the TFRecord maker')
@@ -65,43 +69,43 @@ class DecodeImagesAnnotations(Decoder):
                 annotation_dtype = self.d_type_dict['annotation']
             if 'z_images' in image_features:
                 if 'image' in image_features:
-                    parsed_features['image'] = tf.reshape(tf.io.decode_raw(image_features['image'], out_type=image_dtype),
+                    image_features['image'] = tf.reshape(tf.io.decode_raw(image_features['image'], out_type=image_dtype),
                                                          (image_features['z_images'], image_features['rows'],
                                                           image_features['cols']))
                 if 'annotation' in image_features:
                     if 'num_classes' in image_features:
-                        parsed_features['annotation'] = tf.reshape(tf.io.decode_raw(image_features['annotation'],
+                        image_features['annotation'] = tf.reshape(tf.io.decode_raw(image_features['annotation'],
                                                                                    out_type=annotation_dtype),
                                                                   (image_features['z_images'], image_features['rows'],
                                                                    image_features['cols'], image_features['num_classes']))
                     else:
-                        parsed_features['annotation'] = tf.reshape(tf.io.decode_raw(image_features['annotation'],
+                        image_features['annotation'] = tf.reshape(tf.io.decode_raw(image_features['annotation'],
                                                                                    out_type=annotation_dtype),
                                                                   (image_features['z_images'], image_features['rows'],
                                                                    image_features['cols']))
             else:
-                parsed_features['image'] = tf.reshape(tf.io.decode_raw(image_features['image'], out_type=image_dtype),
+                image_features['image'] = tf.reshape(tf.io.decode_raw(image_features['image'], out_type=image_dtype),
                                                      (image_features['rows'], image_features['cols']))
                 if 'num_classes' in image_features:
-                    parsed_features['annotation'] = tf.reshape(tf.io.decode_raw(image_features['annotation'],
+                    image_features['annotation'] = tf.reshape(tf.io.decode_raw(image_features['annotation'],
                                                                                out_type=annotation_dtype),
                                                               (image_features['rows'], image_features['cols'],
                                                                image_features['num_classes']))
                 else:
-                    parsed_features['annotation'] = tf.reshape(tf.io.decode_raw(image_features['annotation'],
+                    image_features['annotation'] = tf.reshape(tf.io.decode_raw(image_features['annotation'],
                                                                                out_type=annotation_dtype),
                                                               (image_features['rows'], image_features['cols']))
             if 'spacing' in image_features:
                 spacing = tf.io.decode_raw(image_features['spacing'], out_type='float32')
-                parsed_features['spacing'] = spacing
+                image_features['spacing'] = spacing
             if 'dose' in image_features:
                 dose_dtype = 'float'
                 if 'dose' in self.d_type_dict:
                     dose_dtype = self.d_type_dict['dose']
-                parsed_features['dose'] = tf.reshape(tf.io.decode_raw(image_features['dose'], out_type=dose_dtype),
+                image_features['dose'] = tf.reshape(tf.io.decode_raw(image_features['dose'], out_type=dose_dtype),
                                                     (image_features['dose_images'], image_features['dose_rows'],
                                                      image_features['dose_cols']))
-        return parsed_features
+        return image_features
 
 
 class Decode_Images_Annotations(DecodeImagesAnnotations):
@@ -123,23 +127,24 @@ class RandomNoise(ImageProcessor):
         self.tuple_length = tuple_length
         self.image_input_size = image_input_size
 
+    def action(self, tensor):
+        dtype = tensor.dtype
+        tensor = tf.cast(tensor, 'float32')
+        tensor += tf.random.uniform(shape=[], minval=0.0, maxval=self.max_noise,
+                                    dtype='float32') * tf.random.normal(tf.shape(tensor),
+                                                                        mean=0.0, stddev=1.0, dtype='float32')
+        tensor = tf.cast(tensor, dtype)
+        return tensor
+
     def parse(self, image_features, *args, **kwargs):
         if isinstance(image_features, dict):
             _check_keys_(input_features=image_features, keys=self.wanted_keys)
             if self.max_noise == 0.0:
                 return image_features
-            parsed_features = {key: value for key, value in image_features.items()}
             for key in self.wanted_keys:
                 if key in image_features:
-                    data = image_features[key]
-                    dtype = data.dtype
-                    data = tf.cast(data, 'float32')
-                    data += tf.random.uniform(shape=[], minval=0.0, maxval=self.max_noise,
-                                            dtype='float32') * tf.random.normal(tf.shape(image_features[key]),
-                                                                                mean=0.0, stddev=1.0, dtype='float32')
-                    data = tf.cast(data, dtype)
-                    parsed_features[key] = data
-            return parsed_features
+                    image_features[key] = self.action(image_features[key])
+            return image_features
         else:
             noisy_outputs = tuple(tf.cast(image_features[i], 'float32') +
                                   tf.random.uniform(shape=[],
@@ -162,17 +167,18 @@ class ResizeAndPad(ImageProcessor):
         self.resize_row_col = resize_row_col
         self.output_size = output_size
 
+    def action(self, tensor, resize_row_col, output_size):
+        new_image = tf.image.resize(tensor, [resize_row_col, resize_row_col])
+        padded_image = tf.image.pad_to_bounding_box(new_image, (output_size - resize_row_col) // 2,
+                                                    (output_size - resize_row_col) // 2, output_size, output_size)
+        return padded_image
+    
     def parse(self, image_features, *args, **kwargs):
         _check_keys_(input_features=image_features, keys=self.input_keys)
-        parsed_features = {key: value for key, value in image_features.items()}
         for image_key, resize_row_col, output_key, output_size in zip(self.input_keys, self.resize_row_col,
                                                                       self.output_keys, self.output_size):
-            x = image_features[image_key]
-            new_image = tf.image.resize(x, [resize_row_col, resize_row_col])
-            padded_image = tf.image.pad_to_bounding_box(new_image, (output_size - resize_row_col) // 2,
-                                                        (output_size - resize_row_col) // 2, output_size, output_size)
-            parsed_features[output_key] = padded_image
-        return parsed_features
+            image_features[output_key] = self.action(image_features[image_key], resize_row_col, output_size)
+        return image_features
 
 
 class CombineKeys(ImageProcessor):
@@ -181,12 +187,14 @@ class CombineKeys(ImageProcessor):
         self.output_key = output_key
         self.axis = axis
 
+    def action(self, images):
+        return tf.concat(images, axis=self.axis)
+    
     def parse(self, image_features, *args, **kwargs):
         _check_keys_(input_features=image_features, keys=self.image_keys)
-        parsed_features = {key: value for key, value in image_features.items()}
         combine_images = [image_features[i] for i in self.image_keys]
-        parsed_features[self.output_key] = tf.concat(combine_images, axis=self.axis)
-        return parsed_features
+        image_features[self.output_key] = self.action(combine_images)
+        return image_features
 
 
 class FixOutputShapes(ImageProcessor):
@@ -195,12 +203,14 @@ class FixOutputShapes(ImageProcessor):
         self.keys = keys
         self.image_shapes = image_shapes
 
+    def action(self, tensor, shape):
+        return tensor.set_shape(shape)
+    
     def parse(self, image_features, *args, **kwargs):
         _check_keys_(input_features=image_features, keys=self.keys)
-        parsed_features = {key: value for key, value in image_features.items()}
         for key, shape in zip(self.keys, self.image_shapes):
-            parsed_features[key] = image_features[key].set_shape(shape)
-        return parsed_features
+            image_features[key] = self.action(image_features[key], shape)
+        return image_features
 
 
 class OnlyKeepKeys(ImageProcessor):
@@ -347,12 +357,16 @@ class ExpandDimension(ImageProcessor):
         self.axis = axis
         self.image_keys = image_keys
 
+    @tf.function
+    def action(self, tensor):
+        return tf.expand_dims(tensor, axis=self.axis)
+    
     def parse(self, image_features, *args, **kwargs):
         _check_keys_(image_features, self.image_keys)
-        parsed_features = {key: value for key, value in image_features.items()}
+        # parsed_features = {key: value for key, value in image_features.items()}
         for key in self.image_keys:
-            parsed_features[key] = tf.expand_dims(image_features[key], axis=self.axis)
-        return parsed_features
+            image_features[key] = self.action(image_features[key])#tf.expand_dims(image_features[key], axis=self.axis)#
+        return image_features
 
 
 class RepeatChannel(ImageProcessor):
