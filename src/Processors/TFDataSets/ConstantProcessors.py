@@ -197,14 +197,15 @@ class CombineKeys(ImageProcessor):
         return image_features
 
 
-class FixOutputShapes(ImageProcessor):
+class DefineShape(ImageProcessor):
     def __init__(self, keys=('ct_array', 'mask_array'),
                  image_shapes=([1, None, None, None, 1], [1, None, None, None, 2])):
         self.keys = keys
         self.image_shapes = image_shapes
 
     def action(self, tensor, shape):
-        return tensor.set_shape(shape)
+        tensor.set_shape(shape)
+        return tensor
     
     def parse(self, image_features, *args, **kwargs):
         _check_keys_(input_features=image_features, keys=self.keys)
@@ -217,24 +218,10 @@ class OnlyKeepKeys(ImageProcessor):
     def __init__(self, keys=('image_array', 'mask_array')):
         self.keys = keys
     
+    @tf.function
     def parse(self, image_features):
         _check_keys_(image_features, self.keys)
         parsed_features = {key: value for key, value in image_features.items() if key in self.keys}
-        return parsed_features
-
-
-class DefineShape(ImageProcessor):
-    def __init__(self, keys=('image_array', 'mask_array'), image_shapes=([None, None, None, 1], [None, None, None, 2])):
-        self.keys = keys
-        self.image_shapes = image_shapes
-
-    def parse(self, image_features):
-        _check_keys_(image_features, self.keys)
-        parsed_features = {key: value for key, value in image_features.items()}
-        for key, shape in zip(self.keys, self.image_shapes):
-            image = image_features[key]
-            image.set_shape(shape)
-            parsed_features[key] = image
         return parsed_features
 
 
@@ -311,14 +298,16 @@ class ToCategorical(ImageProcessor):
         self.indexes = indexes
         self.tuple_length = tuple_length
 
+    def action(self, tensor, num_classes):
+        return tf.cast(tf.keras.utils.to_categorical(tensor, num_classes), dtype=tensor.dtype)
+    
     def parse(self, image_features, *args, **kwargs):
         if isinstance(image_features, dict):
             _check_keys_(image_features, keys=self.annotation_keys)
-            parsed_features = {key: value for key, value in image_features.items()}
             for key, num_classes in zip(self.annotation_keys, self.number_of_classes):
                 y = image_features[key]
-                parsed_features[key] = tf.cast(tf.keras.utils.to_categorical(y, num_classes), dtype=y.dtype)
-            return parsed_features
+                image_features[key] = self.action(image_features[key], num_classes)
+            return image_features
         else:
             outputs = tuple(tf.cast(tf.one_hot(tf.cast(image_features[i], tf.int32), self.number_of_classes[self.indexes.index(i)]), 'int32')
                             if i in self.indexes else image_features[i]
@@ -337,13 +326,15 @@ class Squeeze(ImageProcessor):
         self.indexes = indexes
         self.tuple_length = tuple_length
 
+    def action(self, tensor):
+        return tf.squeeze(tensor)
+    
     def parse(self, image_features, *args, **kwargs):
         if isinstance(image_features, dict):
             _check_keys_(image_features, self.image_keys)
-            parsed_features = {key: value for key, value in image_features.items()}
             for key in self.image_keys:
-                parsed_features[key] = tf.squeeze(image_features[key])
-            return parsed_features
+                image_features[key] = self.action(image_features[key])
+            return image_features
         else:
             outputs = tuple(tf.squeeze(image_features[i])
                 if i in self.indexes else image_features[i]
@@ -380,12 +371,14 @@ class RepeatChannel(ImageProcessor):
         self.repeats = repeats
         self.input_keys = input_keys
 
+    def action(self, tensor):
+        return tf.repeat(tensor, axis=self.axis, repeats=self.repeats)
+    
     def parse(self, image_features, *args, **kwargs):
         _check_keys_(input_features=image_features, keys=self.input_keys)
-        parsed_features = {key: value for key, value in image_features.items()}
         for key in self.input_keys:
-            parsed_features[key] = tf.repeat(image_features[key], axis=self.axis, repeats=self.repeats)
-        return parsed_features
+            image_features[key] = self.action(image_features[key])
+        return image_features
 
 
 
@@ -394,13 +387,14 @@ class TakeAxis(ImageProcessor):
         self.keys = keys
         self.wanted_axis = wanted_axis
 
+    def action(self, tensor, axis):
+        return tensor[..., axis]
+    
     def parse(self, image_features, *args, **kwargs):
         _check_keys_(image_features, self.keys)
-        parsed_features = {key: value for key, value in image_features.items()}
         for key, axis in zip(self.keys, self.wanted_axis):
-            image = image_features[key]
-            parsed_features[key] = image[..., axis]
-        return parsed_features
+            image_features[key] = self.action(image_features[key], axis)
+        return image_features
 
 
 class FlipImages(ImageProcessor):
@@ -421,11 +415,8 @@ class FlipImages(ImageProcessor):
         self.keys = keys
         self.global_3D = on_global_3D
 
-    def parse(self, image_features, *args, **kwargs):
-        _check_keys_(input_features=image_features, keys=self.keys)
-        parsed_features = {key: value for key, value in image_features.items()}
-        combine_images = [image_features[i] for i in self.keys]
-        flip_image = tf.concat(combine_images, axis=-1)
+    def action(self, combined_tensors):
+        flip_image = tf.concat(combined_tensors, axis=-1)
         og_shape = self.og_shape
         if self.global_3D:
             flip_image = tf.reshape(flip_image, [og_shape[0] * og_shape[1]] + [i for i in og_shape[2:]])
@@ -436,15 +427,25 @@ class FlipImages(ImageProcessor):
         if self.global_3D:
             flip_image = tf.reshape(flip_image, og_shape)
         flipped_image = flip_image
+        return flipped_image
+    
+    @tf.function
+    def reconstruct(self, tensor, start_dim, dimension):
+        end_dim = start_dim + dimension
+        new_image = tensor[..., start_dim:end_dim]
+        new_image.set_shape(self.og_shape[:-1] + (end_dim - start_dim,))
+        return new_image
+
+    def parse(self, image_features, *args, **kwargs):
+        _check_keys_(input_features=image_features, keys=self.keys)
+        flipped_image = self.action([image_features[i] for i in self.keys])
         start_dim = 0
         for key in self.keys:
             dimension = image_features[key].shape[-1]
-            end_dim = start_dim + dimension
-            new_image = flipped_image[..., start_dim:end_dim]
-            new_image.set_shape(self.og_shape[:-1] + (end_dim - start_dim,))
+            new_image = self.reconstruct(flipped_image, start_dim, dimension)
+            image_features[key] = new_image
             start_dim += dimension
-            parsed_features[key] = new_image
-        return parsed_features
+        return image_features
 
 
 class RandomCrop(ImageProcessor):
@@ -456,15 +457,8 @@ class RandomCrop(ImageProcessor):
         self.crop_dimensions = crop_dimensions
         self.min_start_stop = min_start_stop
 
-    def parse(self, image_features, *args, **kwargs):
-        # Ensure all required keys are in the dictionary
-        _check_keys_(image_features, keys=self.keys_to_crop)
-        parsed_features = {key: value for key, value in image_features.items()}
-
-        # Stack the features along the channel dimension
-        images = [image_features[i] for i in self.keys_to_crop]
-        image = tf.concat(images, axis=-1)
-
+    def action(self, tensors):
+        image = tf.concat(tensors, axis=-1)
         # Determine random start indices for cropping
         crop_dimensions = self.crop_dimensions
         start_indices = []
@@ -484,17 +478,28 @@ class RandomCrop(ImageProcessor):
             start_indices.append(start_index)
         slices = [slice(start, start + size) for start, size in zip(start_indices, crop_dimensions)]
         cropped_image = image[slices]
+        return cropped_image
 
+    @tf.function
+    def reconstruct(self, tensor, start_dim, dimension):
+        end_dim = start_dim + dimension
+        new_image = tensor[..., start_dim:end_dim]
+        new_image.set_shape(self.crop_dimensions[:-1] + (end_dim - start_dim,))
+        return new_image
+
+    def parse(self, image_features, *args, **kwargs):
+        # Ensure all required keys are in the dictionary
+        _check_keys_(image_features, keys=self.keys_to_crop)
+        # Stack the features along the channel dimension
+        cropped_image = self.action([image_features[i] for i in self.keys_to_crop])
         # Assign the cropped image parts to the respective keys
         start_dim = 0
         for key in self.keys_to_crop:
             dimension = image_features[key].shape[-1]
-            end_dim = start_dim + dimension
-            new_image = cropped_image[..., start_dim:end_dim]
-            new_image.set_shape(self.crop_dimensions[:-1] + (end_dim - start_dim,))
+            new_image = self.reconstruct(cropped_image, start_dim, dimension)
+            image_features[key] = new_image
             start_dim += dimension
-            parsed_features[key] = new_image
-        return parsed_features
+        return image_features
 
 
 class ShiftImages(ImageProcessor):
@@ -884,13 +889,15 @@ class Cast_Data(ImageProcessor):
         self.indexes = indexes
         self.tuple_length = tuple_length
 
+    def action(self, tensor, dtype):
+        return tf.cast(tensor, dtype)
+
     def parse(self, image_features, *args, **kwargs):
         if isinstance(image_features, dict):
             _check_keys_(input_features=image_features, keys=self.keys)
-            parsed_features = {key: value for key, value in image_features.items()}
             for key, dtype in zip(self.keys, self.dtypes):
-                parsed_features[key] = tf.cast(image_features[key], dtype=dtype)
-            return parsed_features
+                image_features[key] = self.action(image_features[key], dtype=dtype)
+            return image_features
         else:
             outputs = tuple(tf.cast(image_features[i], self.dtypes[self.indexes.index(i)])
                             if i in self.indexes else image_features[i]
