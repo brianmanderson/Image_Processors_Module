@@ -622,8 +622,28 @@ class AddSpacing(ImageProcessor):
         return input_features
 
 
+class ErodeSitkImages:
+    def __init__(self, kernel_radius: Tuple[int, int, int], erode_keys=('annotation_handle',),
+                 kernel_type=sitk.sitkBall):
+        """
+        :param kernel_radius: tuple of the kernel radius to dilate, in row, column, z
+        :param dilate_keys: keys to dilate
+        :param kernel_type: type of kernel to use
+        """
+        self.erode_filter = sitk.BinaryErode()
+        self.erode_filter.SetKernelType(kernel_type)
+        self.erode_filter.SetKernelRadius(kernel_radius)
+        self.erode_keys = erode_keys
+
+    def pre_process(self, input_features):
+        _check_keys_(input_features=input_features, keys=self.erode_keys)
+        for key in self.erode_keys:
+            input_features[key] = self.erode_filter.Execute(input_features[key])
+        return input_features
+
+
 class DilateSitkImages:
-    def __init__(self, kernel_radius: Tuple[float, float, float], dilate_keys=('annotation_handle',),
+    def __init__(self, kernel_radius: Tuple[int, int, int], dilate_keys=('annotation_handle',),
                  kernel_type=sitk.sitkBall):
         """
         :param kernel_radius: tuple of the kernel radius to dilate, in row, column, z
@@ -638,18 +658,7 @@ class DilateSitkImages:
     def pre_process(self, input_features):
         _check_keys_(input_features=input_features, keys=self.dilate_keys)
         for key in self.dilate_keys:
-            mask_handle = input_features[key]
-            assert type(mask_handle) is sitk.Image, 'Pass a SimpleITK Image'
-            out_array = []
-            mask_array = sitk.GetArrayFromImage(mask_handle)
-            for z in range(mask_array.shape[-1]):
-                temp_handle = sitk.GetImageFromArray(mask_array[..., z])
-                _orient_handles_(temp_handle, mask_handle)
-                temp_handle = self.dilate_filter.Execute(temp_handle)
-                out_array.append(sitk.GetArrayFromImage(temp_handle)[..., None])
-            out_array = np.concatenate(out_array, axis=-1)
-            mask_handle = sitk.GetImageFromArray(out_array)
-            input_features[key] = mask_handle
+            input_features[key] = self.dilate_filter.Execute(input_features[key])
         return input_features
 
 
