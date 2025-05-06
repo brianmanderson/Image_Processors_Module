@@ -622,29 +622,81 @@ class AddSpacing(ImageProcessor):
         return input_features
 
 
-class ErodeSitkImages:
-    def __init__(self, kernel_radius: Tuple[int, int, int], erode_keys=('annotation_handle',),
-                 kernel_type=sitk.sitkBall):
+class RepeatTopSlices:
+    def __init__(self, array_keys=('prediction_0',), number_slices=5):
         """
         :param kernel_radius: tuple of the kernel radius to dilate, in row, column, z
         :param dilate_keys: keys to dilate
         :param kernel_type: type of kernel to use
         """
-        self.erode_filter = sitk.BinaryErode()
+        self.array_keys = array_keys
+        self.number_of_slices = number_slices
+
+    def pre_process(self, input_features):
+        _check_keys_(input_features=input_features, keys=self.array_keys)
+        for key in self.array_keys:
+            mask_array = input_features[key]
+            out_array = np.zeros(mask_array.shape)
+            for z in range(1, mask_array.shape[-1]):
+                temp_array = mask_array[..., z]
+                mask = np.any(temp_array > 0, axis=(1, 2))
+                # get the indices where mask is True
+                nonzero_idxs = np.where(mask)[0]
+                if nonzero_idxs.size == 0:
+                    continue
+                top_slice = nonzero_idxs[-1]
+                # 2) Compute the indices of the “top 5” within that range
+                start_top = top_slice - self.number_of_slices
+                top_idxs = np.arange(start_top, top_slice + 1)
+                sum_top5 = temp_array[top_idxs, ...].sum(axis=0)
+                temp_array[top_idxs, ...] = sum_top5
+                out_array[temp_array>0, z] = 1
+            input_features[key] = out_array
+        return input_features
+
+
+class ErodeSitkImages:
+    def __init__(self, kernel_radius: Tuple[int, int, int], erode_keys=('annotation_handle',),
+                 kernel_type=sitk.sitkBall, guiding_handle='primary_handle_ref'):
+        """
+        :param kernel_radius: tuple of the kernel radius to dilate, in row, column, z
+        :param dilate_keys: keys to dilate
+        :param kernel_type: type of kernel to use
+        """
+        self.erode_filter = sitk.BinaryErodeImageFilter()
         self.erode_filter.SetKernelType(kernel_type)
         self.erode_filter.SetKernelRadius(kernel_radius)
         self.erode_keys = erode_keys
+        self.guiding_handle = guiding_handle
 
     def pre_process(self, input_features):
         _check_keys_(input_features=input_features, keys=self.erode_keys)
         for key in self.erode_keys:
-            input_features[key] = self.erode_filter.Execute(input_features[key])
+            mask_handle = input_features[key]
+            input_array = False
+            if type(mask_handle) is sitk.Image:
+                mask_array = sitk.GetArrayFromImage(mask_handle)
+            else:
+                input_array = True
+                mask_array = mask_handle
+            out_array = []
+            for z in range(mask_array.shape[-1]):
+                temp_handle = sitk.GetImageFromArray(mask_array[..., z])
+                temp_handle = self.erode_filter.Execute(temp_handle)
+                out_array.append(sitk.GetArrayFromImage(temp_handle)[..., None])
+            out_array = np.concatenate(out_array, axis=-1)
+            if not input_array:
+                mask_handle = sitk.GetImageFromArray(out_array)
+                _orient_handles_(mask_handle, input_features[self.guiding_handle])
+            else:
+                mask_handle = out_array
+            input_features[key] = mask_handle
         return input_features
 
 
 class DilateSitkImages:
     def __init__(self, kernel_radius: Tuple[int, int, int], dilate_keys=('annotation_handle',),
-                 kernel_type=sitk.sitkBall):
+                 kernel_type=sitk.sitkBall, guiding_handle='primary_handle_ref'):
         """
         :param kernel_radius: tuple of the kernel radius to dilate, in row, column, z
         :param dilate_keys: keys to dilate
@@ -654,11 +706,30 @@ class DilateSitkImages:
         self.dilate_filter.SetKernelType(kernel_type)
         self.dilate_filter.SetKernelRadius(kernel_radius)
         self.dilate_keys = dilate_keys
+        self.guiding_handle = guiding_handle
 
     def pre_process(self, input_features):
         _check_keys_(input_features=input_features, keys=self.dilate_keys)
         for key in self.dilate_keys:
-            input_features[key] = self.dilate_filter.Execute(input_features[key])
+            mask_handle = input_features[key]
+            input_array = False
+            if type(mask_handle) is sitk.Image:
+                mask_array = sitk.GetArrayFromImage(mask_handle)
+            else:
+                input_array = True
+                mask_array = mask_handle
+            out_array = []
+            for z in range(mask_array.shape[-1]):
+                temp_handle = sitk.GetImageFromArray(mask_array[..., z])
+                temp_handle = self.dilate_filter.Execute(temp_handle)
+                out_array.append(sitk.GetArrayFromImage(temp_handle)[..., None])
+            out_array = np.concatenate(out_array, axis=-1)
+            if not input_array:
+                mask_handle = sitk.GetImageFromArray(out_array)
+                _orient_handles_(mask_handle, input_features[self.guiding_handle])
+            else:
+                mask_handle = out_array
+            input_features[key] = mask_handle
         return input_features
 
 
